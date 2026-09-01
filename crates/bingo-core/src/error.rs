@@ -16,7 +16,6 @@ pub enum RuleError {
     WrongPhase,
     NotAParticipant,
     RoomLocked,
-    CardLimitReached,
     UnknownCard,
     NumberNotDrawn,
     BacklogMarkNotAllowed,
@@ -30,6 +29,8 @@ pub enum RuleError {
     NoNumbersRemain,
     NoSequenceRemain,
     LogMismatch,
+    Kicked,
+    AlreadyJoined,
 }
 
 impl RuleError {
@@ -40,7 +41,6 @@ impl RuleError {
             Self::WrongPhase,
             Self::NotAParticipant,
             Self::RoomLocked,
-            Self::CardLimitReached,
             Self::UnknownCard,
             Self::NumberNotDrawn,
             Self::BacklogMarkNotAllowed,
@@ -54,6 +54,8 @@ impl RuleError {
             Self::NoNumbersRemain,
             Self::NoSequenceRemain,
             Self::LogMismatch,
+            Self::Kicked,
+            Self::AlreadyJoined,
         ]
     }
 }
@@ -63,7 +65,7 @@ mod tests {
     use super::*;
 
     /// The number of positions `all()` must fill.
-    const VARIANT_COUNT: usize = 18;
+    const VARIANT_COUNT: usize = 19;
 
     /// Maps a variant to the position `all()` lists it at.
     ///
@@ -76,20 +78,21 @@ mod tests {
             RuleError::WrongPhase => 1,
             RuleError::NotAParticipant => 2,
             RuleError::RoomLocked => 3,
-            RuleError::CardLimitReached => 4,
-            RuleError::UnknownCard => 5,
-            RuleError::NumberNotDrawn => 6,
-            RuleError::BacklogMarkNotAllowed => 7,
-            RuleError::NumberNotOnCard => 8,
-            RuleError::NoSuchPosition => 9,
-            RuleError::NothingToUndo => 10,
-            RuleError::WinAlreadyRecognised => 11,
-            RuleError::NoBingo => 12,
-            RuleError::ManualDaubDisabled => 13,
-            RuleError::ClaimDisabled => 14,
-            RuleError::NoNumbersRemain => 15,
-            RuleError::NoSequenceRemain => 16,
-            RuleError::LogMismatch => 17,
+            RuleError::UnknownCard => 4,
+            RuleError::NumberNotDrawn => 5,
+            RuleError::BacklogMarkNotAllowed => 6,
+            RuleError::NumberNotOnCard => 7,
+            RuleError::NoSuchPosition => 8,
+            RuleError::NothingToUndo => 9,
+            RuleError::WinAlreadyRecognised => 10,
+            RuleError::NoBingo => 11,
+            RuleError::ManualDaubDisabled => 12,
+            RuleError::ClaimDisabled => 13,
+            RuleError::NoNumbersRemain => 14,
+            RuleError::NoSequenceRemain => 15,
+            RuleError::LogMismatch => 16,
+            RuleError::Kicked => 17,
+            RuleError::AlreadyJoined => 18,
         }
     }
 

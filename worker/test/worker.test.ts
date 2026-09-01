@@ -15,6 +15,7 @@ import { Room } from '../src/room';
 import { DEADLINE_HORIZONS, MAX_PLAYERS } from '../src/settings';
 
 const SECRET = 'test-secret';
+const AUTH_ROOM = 'auth';
 const DEFAULT_JWT_HEADER: Record<string, unknown> = {
   alg: 'HS256',
 };
@@ -23,6 +24,7 @@ interface Claims {
   iss?: unknown;
   sub?: unknown;
   exp?: unknown;
+  room?: unknown;
   name?: unknown;
 }
 interface TestClient {
@@ -47,6 +49,7 @@ const token = async (claims: Claims = {}, header: Record<string, unknown> = DEFA
     iss: 'hmac',
     sub: 'host',
     exp: Math.floor(Date.now() / 1000) + 3600,
+    room: AUTH_ROOM,
     ...claims,
   };
   const encodedHeader = encodePart(header);
@@ -65,16 +68,17 @@ const token = async (claims: Claims = {}, header: Record<string, unknown> = DEFA
   const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput)));
   return `${signingInput}.${bytesToBase64Url(signature)}`;
 };
-const auth = async (subject = 'host', issuer = 'hmac', name?: string): Promise<string> =>
+const auth = async (room: string, subject = 'host', issuer = 'hmac', name?: string): Promise<string> =>
   `Bearer ${await token({
     iss: issuer,
     sub: subject,
+    room,
     name,
   })}`;
 const openClient = async (room: string, subject = 'host', extraHeaders: HeadersInit = {}, displayName?: string): Promise<TestClient> => {
   const headers = new Headers(extraHeaders);
   headers.set('Upgrade', 'websocket');
-  headers.set('Authorization', await auth(subject, 'hmac', displayName));
+  headers.set('Authorization', await auth(room, subject, 'hmac', displayName));
   const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
     headers,
   });
@@ -116,7 +120,7 @@ const nextMessage = async (client: TestClient): Promise<ServerMessage> => parseS
 const fetchGameLog = async (room: string, gameIndex: number, subject = 'host'): Promise<Response> =>
   workerExports.default.fetch(`https://example.test/rooms/${room}/games/${gameIndex}/log`, {
     headers: {
-      Authorization: await auth(subject),
+      Authorization: await auth(room, subject),
     },
   });
 const nextSnapshot = async (
@@ -373,7 +377,7 @@ describe('front door identity', () => {
     const room = roomName('state-upgrade');
     const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(),
+        Authorization: await auth(room),
         Upgrade: 'websocket',
       },
     });
@@ -399,10 +403,12 @@ describe('front door identity', () => {
     });
   });
   it('accepts a browser assertion as the selected websocket protocol', async () => {
+    const room = roomName('browser');
     const assertion = await token({
       sub: 'browser',
+      room,
     });
-    const response = await workerExports.default.fetch(`https://example.test/rooms/${roomName('browser')}/ws`, {
+    const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
         Upgrade: 'websocket',
         'Sec-WebSocket-Protocol': assertion,
@@ -418,7 +424,7 @@ describe('front door identity', () => {
   it('rejects decoded room ids that are unsafe for internal headers', async () => {
     const response = await workerExports.default.fetch('https://example.test/rooms/bad%0Aroom/state', {
       headers: {
-        Authorization: await auth(),
+        Authorization: await auth('bad\nroom'),
       },
     });
     expect(response.status).toBe(400);
@@ -449,7 +455,7 @@ describe('front door identity', () => {
     const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
       headers: {
         Upgrade: 'websocket',
-        Authorization: await auth('host', 'unknown'),
+        Authorization: await auth(AUTH_ROOM, 'host', 'unknown'),
       },
     });
     expect(await response.json()).toEqual({
@@ -484,6 +490,18 @@ describe('front door identity', () => {
     });
     expect(await response.json()).toEqual({
       error: 'ExpiredToken',
+    });
+  });
+  it('rejects a token minted for another room', async () => {
+    const response = await workerExports.default.fetch(`https://example.test/rooms/${roomName('other')}/ws`, {
+      headers: {
+        Upgrade: 'websocket',
+        Authorization: await auth(AUTH_ROOM),
+      },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: 'RoomMismatch',
     });
   });
   it('rejects a token claiming another algorithm', async () => {
@@ -536,6 +554,7 @@ describe('front door identity', () => {
       iss: 'hmac',
       sub: 'host',
       exp: Math.floor(Date.now() / 1000) + 60,
+      room: AUTH_ROOM,
     });
     const goodHeader = encodePart({
       alg: 'HS256',
@@ -578,10 +597,16 @@ describe('front door identity', () => {
         })}`,
         'InvalidClaims',
       ],
+      [
+        `Bearer ${await token({
+          room: undefined,
+        })}`,
+        'InvalidClaims',
+      ],
     ];
     for (const [authorization, code] of cases) {
       expect(
-        await verifyIdentity(authorization, {
+        await verifyIdentity(authorization, AUTH_ROOM, {
           hmac: SECRET,
         }),
       ).toEqual({
@@ -593,6 +618,7 @@ describe('front door identity', () => {
       `Bearer ${await token({
         name: 'Host Name',
       })}`,
+      AUTH_ROOM,
       {
         hmac: SECRET,
       },
@@ -602,6 +628,7 @@ describe('front door identity', () => {
       `Bearer ${await token({
         name: '',
       })}`,
+      AUTH_ROOM,
       {
         hmac: SECRET,
       },
@@ -612,6 +639,7 @@ describe('front door identity', () => {
       `Bearer ${await token({
         name: null,
       })}`,
+      AUTH_ROOM,
       {
         hmac: SECRET,
       },
@@ -623,6 +651,7 @@ describe('front door identity', () => {
       `Bearer ${await token({
         name: 'a'.repeat(256),
       })}`,
+      AUTH_ROOM,
       {
         hmac: SECRET,
       },
@@ -633,6 +662,7 @@ describe('front door identity', () => {
       `Bearer ${await token({
         name: oversizedDisplayName,
       })}`,
+      AUTH_ROOM,
       {
         hmac: SECRET,
       },
@@ -645,7 +675,7 @@ describe('front door identity', () => {
   it('reports a missing issuer-bound signing secret', async () => {
     const authorization = `Bearer ${await token()}`;
     expect(
-      await verifyIdentity(authorization, {
+      await verifyIdentity(authorization, AUTH_ROOM, {
         hmac: undefined,
       }),
     ).toEqual({
@@ -653,7 +683,7 @@ describe('front door identity', () => {
       code: 'MissingIdentitySecret',
     });
     expect(
-      await verifyIdentity(authorization, {
+      await verifyIdentity(authorization, AUTH_ROOM, {
         hmac: '',
       }),
     ).toEqual({
@@ -1062,7 +1092,6 @@ describe('room games and projections', () => {
       config: OPEN_CONFIG,
     });
     const initial = await replacementAccepted(host);
-    const projectionCommitment = initial.snapshot.view.seedCommitment;
     expect(initial.snapshot.room.roomId).toBe(room);
     expect(initial.snapshot.room.commitment).toBeNull();
     expect(initial.snapshot.room.commitmentConfig).toBeNull();
@@ -1072,7 +1101,6 @@ describe('room games and projections', () => {
     const joined = await accepted(alice);
     await accepted(host);
     expect(joined.snapshot.room.commitment).toBeNull();
-    expect(joined.snapshot.view.seedCommitment).not.toBe(projectionCommitment);
     expect(joined.snapshot.view.players.map(player => player.subject)).toEqual(['host', 'alice']);
     host.send({
       type: 'command',
@@ -1239,7 +1267,7 @@ describe('room games and projections', () => {
     expect(projected.ok && projected.value).toEqual(finished.snapshot.view);
     const invalid = await workerExports.default.fetch(`https://example.test/rooms/${room}/games/-1/log`, {
       headers: {
-        Authorization: await auth('alice'),
+        Authorization: await auth(room, 'alice'),
       },
     });
     expect(invalid.status).toBe(400);
@@ -1476,7 +1504,7 @@ describe('room games and projections', () => {
       command: 'Join',
     });
     const awaitedResult11 = await errorMessage(host);
-    expect(awaitedResult11.code).toBe('CardLimitReached');
+    expect(awaitedResult11.code).toBe('AlreadyJoined');
     alice.send({
       type: 'settings',
       settings: {
@@ -1502,7 +1530,7 @@ describe('room games and projections', () => {
     const full = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
         Upgrade: 'websocket',
-        Authorization: await auth('bob'),
+        Authorization: await auth(room, 'bob'),
       },
     });
     expect(full.status).toBe(409);
@@ -1517,7 +1545,7 @@ describe('room games and projections', () => {
     const locked = await workerExports.default.fetch(`https://example.test/rooms/${lockedRoom}/ws`, {
       headers: {
         Upgrade: 'websocket',
-        Authorization: await auth('alice'),
+        Authorization: await auth(lockedRoom, 'alice'),
       },
     });
     expect(locked.status).toBe(409);
@@ -1623,7 +1651,7 @@ describe('room games and projections', () => {
     const rejected = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
         Upgrade: 'websocket',
-        Authorization: await auth('alice'),
+        Authorization: await auth(room, 'alice'),
       },
     });
     expect(rejected.status).toBe(409);
@@ -1964,7 +1992,7 @@ describe('host departure and alarms', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(),
+        Authorization: await auth(room),
       },
     });
     const message: ServerMessage = await response.json();
@@ -2066,7 +2094,7 @@ describe('additional room edges', () => {
     await replaceDeadlines(room, [['room_gc', 1]]);
     const outsiderResponse = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth('outsider'),
+        Authorization: await auth(room, 'outsider'),
       },
     });
     expect(outsiderResponse.status).toBe(403);
@@ -2076,7 +2104,7 @@ describe('additional room edges', () => {
     expect(await deadlineAt(room, 'room_gc')).toBe(1);
     const stateResponse = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(),
+        Authorization: await auth(room),
       },
     });
     expect(stateResponse.status).toBe(200);

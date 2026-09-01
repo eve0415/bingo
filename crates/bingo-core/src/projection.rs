@@ -1,12 +1,10 @@
 use crate::reducer::effective_marks;
 use crate::state::{CardState, Participant};
 use crate::{
-    Drawn, GameConfig, GameState, Marks, Phase, PlayerId, RecognizedWin, commitment_input,
-    draw_order, generate_card,
+    Drawn, GameConfig, GameState, Marks, Phase, PlayerId, RecognizedWin, draw_order, generate_card,
 };
 use bingo_board::analyze;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// A generated card and its current visible analysis.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -29,7 +27,6 @@ pub struct PlayerView {
     pub drawn: Drawn,
     pub wins: Vec<RecognizedWin>,
     pub cards: Vec<CardView>,
-    pub seed_commitment: [u8; 32],
     pub revealed_seed: Option<[u8; 32]>,
 }
 
@@ -43,7 +40,6 @@ pub struct HostView {
     pub drawn: Drawn,
     pub wins: Vec<RecognizedWin>,
     pub cards: Vec<CardView>,
-    pub seed_commitment: [u8; 32],
     pub revealed_seed: Option<[u8; 32]>,
 }
 
@@ -64,7 +60,6 @@ pub fn project_player(state: &GameState, who: &PlayerId) -> PlayerView {
         drawn: state.drawn,
         wins: state.wins.clone(),
         cards,
-        seed_commitment: seed_commitment(state),
         revealed_seed: revealed_seed(state),
     }
 }
@@ -85,7 +80,6 @@ pub fn project_host(state: &GameState) -> HostView {
         drawn: state.drawn,
         wins: state.wins.clone(),
         cards,
-        seed_commitment: seed_commitment(state),
         revealed_seed: revealed_seed(state),
     }
 }
@@ -139,11 +133,6 @@ fn card_view(
     }
 }
 
-fn seed_commitment(state: &GameState) -> [u8; 32] {
-    let roster = players(state);
-    Sha256::digest(commitment_input(state.seed, &state.config, &roster)).into()
-}
-
 fn revealed_seed(state: &GameState) -> Option<[u8; 32]> {
     (state.phase == Phase::Finished).then_some(state.seed)
 }
@@ -180,10 +169,9 @@ mod tests {
         for value in [player, host] {
             let object = value.as_object().unwrap();
             assert!(!object.contains_key("seed"));
-            assert!(object.contains_key("seed_commitment"));
+            assert!(!object.contains_key("seed_commitment"));
             assert!(object.get("revealed_seed").unwrap().is_null());
         }
-        assert_ne!(project_host(&state).seed_commitment, seed);
     }
 
     #[test]
@@ -210,14 +198,7 @@ mod tests {
         assert_eq!(host.cards.len(), 4);
         assert_eq!(host.players, vec![id("alice"), id("bob")]);
         assert!(host.cards.iter().all(|card| card.cells.len() == 25));
-    }
 
-    #[test]
-    fn commitment_tracks_the_resolved_roster() {
-        let mut state = init(config(), [1; 32], id("host")).unwrap();
-        let empty = project_host(&state).seed_commitment;
-        apply(&mut state, &id("alice"), Command::Join).unwrap();
-        assert_ne!(project_host(&state).seed_commitment, empty);
         assert!(project_player(&state, &id("nobody")).cards.is_empty());
     }
 }

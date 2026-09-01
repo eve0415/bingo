@@ -114,10 +114,7 @@ export type RoomInfo = RoomInfoBase &
       }
   );
 
-export type RoomView = Omit<PlayerViewDto | HostViewDto, 'seedCommitment'> & {
-  /** Engine commitment recomputed from the live roster, not a verifiable promise about the published game-start inputs. */
-  seedCommitment: string;
-};
+export type RoomView = PlayerViewDto | HostViewDto;
 
 export type ClientMessage =
   | { type: 'command'; command: CommandDto }

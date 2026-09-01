@@ -49,7 +49,7 @@ const forward = async (context: Context<AppEnvironment>, mode: 'log' | 'state' |
   headers.delete('Authorization');
   headers.delete('Sec-WebSocket-Protocol');
   if (mode !== 'websocket') headers.delete('Upgrade');
-  const verified = await verifyIdentity(authorization, {
+  const verified = await verifyIdentity(authorization, roomId, {
     hmac: context.env.IDENTITY_HMAC_SECRET,
   });
   if (!verified.ok) {

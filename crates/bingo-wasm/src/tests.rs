@@ -87,14 +87,8 @@ fn exports_delegate_a_complete_game_and_keep_the_seed_out_of_running_views() {
     assert_eq!(player["ok"]["view"]["cards"].as_array().unwrap().len(), 1);
     assert_eq!(player["ok"]["view"]["cards"][0]["marked"], json!([4]));
     assert!(player["ok"]["view"]["revealedSeed"].is_null());
-    assert_eq!(
-        player["ok"]["view"]["seedCommitment"]
-            .as_str()
-            .unwrap()
-            .len(),
-        64
-    );
     assert!(player["ok"]["view"].get("seed").is_none());
+    assert!(player["ok"]["view"].get("seedCommitment").is_none());
 
     let started = apply_command(&state, "host", json!("Start"));
     let state = started["ok"]["state"].as_str().unwrap().to_owned();

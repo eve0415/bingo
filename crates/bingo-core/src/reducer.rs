@@ -71,8 +71,11 @@ fn join(state: &mut GameState, actor: &PlayerId) -> Result<Vec<Event>, RuleError
     if state.phase == Phase::Finished {
         return Err(RuleError::WrongPhase);
     }
+    if state.kicked_participants.iter().any(|player| player == actor) {
+        return Err(RuleError::Kicked);
+    }
     if participant_index(state, actor).is_some() {
-        return Err(RuleError::CardLimitReached);
+        return Err(RuleError::AlreadyJoined);
     }
 
     let departed = state
@@ -644,18 +647,40 @@ fn leave(state: &mut GameState, actor: &PlayerId) -> Result<Vec<Event>, RuleErro
     }])
 }
 
+/// The roster a kick target was found on, and its position there.
+enum KickSource {
+    Active(usize),
+    Departed(usize),
+}
+
+fn kick_source(state: &GameState, target: &PlayerId) -> Option<KickSource> {
+    if let Some(index) = participant_index(state, target) {
+        return Some(KickSource::Active(index));
+    }
+    state
+        .departed_participants
+        .iter()
+        .position(|participant| &participant.id == target)
+        .map(KickSource::Departed)
+}
+
 fn kick(
     state: &mut GameState,
     actor: &PlayerId,
     target: &PlayerId,
 ) -> Result<Vec<Event>, RuleError> {
     require_active(state)?;
-    let Some(index) = participant_index(state, target) else {
+    // A player who has already left is still kickable: otherwise leaving first
+    // would dodge the ban for the rest of the game.
+    let Some(roster) = kick_source(state, target) else {
         return Err(RuleError::NotAParticipant);
     };
     let seq = allocate_seq(state)?;
-    let participant = state.participants.remove(index);
-    state.departed_participants.push(participant);
+    match roster {
+        KickSource::Active(index) => state.participants.remove(index),
+        KickSource::Departed(index) => state.departed_participants.remove(index),
+    };
+    state.kicked_participants.push(target.clone());
     Ok(vec![Event::PlayerKicked {
         seq,
         actor: actor.clone(),
@@ -815,7 +840,7 @@ mod tests {
                 &mut state,
                 &host,
                 crate::Command::Kick {
-                    target: alice.clone(),
+                    target: id("nobody"),
                 },
             ),
             Err(RuleError::NotAParticipant)
@@ -824,8 +849,22 @@ mod tests {
             apply(
                 &mut state,
                 &host,
-                crate::Command::TransferHost {
+                crate::Command::Kick {
                     target: alice.clone(),
+                },
+            ),
+            Ok(vec![Event::PlayerKicked {
+                seq: 1,
+                actor: host.clone(),
+                target: alice.clone(),
+            }])
+        );
+        assert_eq!(
+            apply(
+                &mut state,
+                &host,
+                crate::Command::TransferHost {
+                    target: alice,
                 },
             ),
             Err(RuleError::NotAParticipant)
@@ -839,7 +878,7 @@ mod tests {
                 },
             ),
             Ok(vec![Event::HostTransferred {
-                seq: 1,
+                seq: 2,
                 actor: host.clone(),
                 target: bob.clone(),
             }])
@@ -864,7 +903,7 @@ mod tests {
                 },
             ),
             Ok(vec![Event::PlayerKicked {
-                seq: 2,
+                seq: 3,
                 actor: bob.clone(),
                 target: bob,
             }])
@@ -1003,7 +1042,7 @@ mod tests {
         let before = state.clone();
         assert_eq!(
             apply(&mut state, &alice, crate::Command::Join),
-            Err(RuleError::CardLimitReached)
+            Err(RuleError::AlreadyJoined)
         );
         assert_eq!(state, before);
     }
@@ -1110,8 +1149,10 @@ mod tests {
             },
         )
         .unwrap();
-        apply(&mut state, &alice, crate::Command::Join).unwrap();
-        assert_eq!(state.participants[0].cards, original_cards);
+        assert_eq!(
+            apply(&mut state, &alice, crate::Command::Join),
+            Err(RuleError::Kicked)
+        );
 
         apply(&mut state, &bob, crate::Command::Join).unwrap();
         let bob_cards = &state
@@ -1124,6 +1165,142 @@ mod tests {
             bob_cards
                 .iter()
                 .all(|card| card.marks == initial_marks(BoardSize::S5, true))
+        );
+    }
+
+    #[test]
+    fn a_kick_outlasts_the_late_join_gate_a_departure_bypasses() {
+        let host = id("host");
+        let alice = id("alice");
+        let bob = id("bob");
+        let mut state = init(base_config(), [1; 32], host.clone()).unwrap();
+        assert_eq!(state.config.late_join, LateJoin::Closed);
+        apply(&mut state, &alice, crate::Command::Join).unwrap();
+        apply(&mut state, &bob, crate::Command::Join).unwrap();
+        apply(&mut state, &host, crate::Command::Start).unwrap();
+        apply(&mut state, &host, crate::Command::Draw).unwrap();
+
+        // A dropped connection still restores its card in a closed room.
+        apply(&mut state, &bob, crate::Command::Leave).unwrap();
+        apply(&mut state, &bob, crate::Command::Join).unwrap();
+
+        apply(
+            &mut state,
+            &host,
+            crate::Command::Kick {
+                target: alice.clone(),
+            },
+        )
+        .unwrap();
+        assert!(state.departed_participants.is_empty());
+        assert_eq!(state.kicked_participants, vec![alice.clone()]);
+        let before = state.clone();
+        assert_eq!(
+            apply(&mut state, &alice, crate::Command::Join),
+            Err(RuleError::Kicked)
+        );
+        assert_eq!(state, before);
+
+        // Leaving first does not dodge the ban.
+        apply(&mut state, &bob, crate::Command::Leave).unwrap();
+        assert_eq!(
+            apply(
+                &mut state,
+                &host,
+                crate::Command::Kick {
+                    target: bob.clone(),
+                },
+            ),
+            Ok(vec![Event::PlayerKicked {
+                seq: state.next_seq - 1,
+                actor: host.clone(),
+                target: bob.clone(),
+            }])
+        );
+        assert!(state.departed_participants.is_empty());
+        assert_eq!(state.kicked_participants, vec![alice, bob.clone()]);
+        assert_eq!(
+            apply(&mut state, &bob, crate::Command::Join),
+            Err(RuleError::Kicked)
+        );
+        assert_eq!(
+            apply(&mut state, &host, crate::Command::Kick { target: id("ghost") }),
+            Err(RuleError::NotAParticipant)
+        );
+    }
+
+    #[test]
+    fn undo_revokes_marks_for_departed_but_not_kicked_participants() {
+        let mut rules = base_config();
+        rules.daub = Daub::Manual;
+        rules.win_limit = WinLimit::Unlimited;
+        let host = id("host");
+        let alice = id("alice");
+        let bob = id("bob");
+        let mut state = init(rules, [1; 32], host.clone()).unwrap();
+        apply(&mut state, &alice, crate::Command::Join).unwrap();
+        apply(&mut state, &bob, crate::Command::Join).unwrap();
+        apply(&mut state, &host, crate::Command::Start).unwrap();
+        let alice_card = crate::generate_card(
+            state.seed,
+            &alice,
+            0,
+            state.config.size,
+            state.config.free_center,
+        );
+        let bob_card = crate::generate_card(
+            state.seed,
+            &bob,
+            0,
+            state.config.size,
+            state.config.free_center,
+        );
+        let (number, alice_at, bob_at) = loop {
+            let number = next_number(&state);
+            apply(&mut state, &host, crate::Command::Draw).unwrap();
+            if let Some(alice_at) = alice_card.position_of(number)
+                && let Some(bob_at) = bob_card.position_of(number)
+            {
+                break (number, alice_at, bob_at);
+            }
+        };
+        state.participants[0].cards[0]
+            .marks
+            .set(alice_at.0, alice_at.1)
+            .unwrap();
+        state.participants[1].cards[0]
+            .marks
+            .set(bob_at.0, bob_at.1)
+            .unwrap();
+
+        apply(
+            &mut state,
+            &host,
+            crate::Command::Kick {
+                target: alice.clone(),
+            },
+        )
+        .unwrap();
+        apply(&mut state, &bob, crate::Command::Leave).unwrap();
+        let events = apply(&mut state, &host, crate::Command::Undo).unwrap();
+        // A kicked player can never rejoin, so their card is frozen where the
+        // kick left it and no revocation is reported for them.
+        assert!(matches!(
+            events.as_slice(),
+            [Event::DrawUndone { number: undone, revoked, .. }]
+                if *undone == number
+                    && revoked
+                        == &vec![crate::RevokedMark {
+                            player: bob.clone(),
+                            card_ix: 0,
+                            row: bob_at.0,
+                            col: bob_at.1,
+                        }]
+        ));
+        assert!(
+            !state.departed_participants[0].cards[0]
+                .marks
+                .get(bob_at.0, bob_at.1)
         );
     }
 

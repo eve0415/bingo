@@ -640,7 +640,6 @@ pub struct PlayerViewDto {
     pub drawn: Vec<u8>,
     pub wins: Vec<RecognizedWinDto>,
     pub cards: Vec<CardViewDto>,
-    pub seed_commitment: String,
     pub revealed_seed: Option<String>,
 }
 
@@ -659,7 +658,6 @@ impl From<PlayerView> for PlayerViewDto {
                 .map(|win| RecognizedWinDto::from_core(win, size))
                 .collect(),
             cards: value.cards.iter().map(CardViewDto::from).collect(),
-            seed_commitment: bytes_to_hex(value.seed_commitment),
             revealed_seed: value.revealed_seed.map(bytes_to_hex),
         }
     }
@@ -676,7 +674,6 @@ pub struct HostViewDto {
     pub drawn: Vec<u8>,
     pub wins: Vec<RecognizedWinDto>,
     pub cards: Vec<CardViewDto>,
-    pub seed_commitment: String,
     pub revealed_seed: Option<String>,
 }
 
@@ -695,7 +692,6 @@ impl From<HostView> for HostViewDto {
                 .map(|win| RecognizedWinDto::from_core(win, size))
                 .collect(),
             cards: value.cards.iter().map(CardViewDto::from).collect(),
-            seed_commitment: bytes_to_hex(value.seed_commitment),
             revealed_seed: value.revealed_seed.map(bytes_to_hex),
         }
     }
@@ -776,7 +772,6 @@ pub enum RuleErrorCodeDto {
     WrongPhase,
     NotAParticipant,
     RoomLocked,
-    CardLimitReached,
     UnknownCard,
     NumberNotDrawn,
     BacklogMarkNotAllowed,
@@ -790,6 +785,8 @@ pub enum RuleErrorCodeDto {
     NoNumbersRemain,
     NoSequenceRemain,
     LogMismatch,
+    Kicked,
+    AlreadyJoined,
 }
 
 impl From<RuleError> for RuleErrorCodeDto {
@@ -799,7 +796,6 @@ impl From<RuleError> for RuleErrorCodeDto {
             RuleError::WrongPhase => Self::WrongPhase,
             RuleError::NotAParticipant => Self::NotAParticipant,
             RuleError::RoomLocked => Self::RoomLocked,
-            RuleError::CardLimitReached => Self::CardLimitReached,
             RuleError::UnknownCard => Self::UnknownCard,
             RuleError::NumberNotDrawn => Self::NumberNotDrawn,
             RuleError::BacklogMarkNotAllowed => Self::BacklogMarkNotAllowed,
@@ -813,6 +809,8 @@ impl From<RuleError> for RuleErrorCodeDto {
             RuleError::NoNumbersRemain => Self::NoNumbersRemain,
             RuleError::NoSequenceRemain => Self::NoSequenceRemain,
             RuleError::LogMismatch => Self::LogMismatch,
+            RuleError::Kicked => Self::Kicked,
+            RuleError::AlreadyJoined => Self::AlreadyJoined,
         }
     }
 }

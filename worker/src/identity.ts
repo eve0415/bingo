@@ -26,6 +26,7 @@ const rawTokenClaimsSchema = object({
   iss: string(),
   sub: subjectSchema,
   exp: expirationSchema,
+  room: string(),
   name: optional(unknown()),
 });
 const tokenClaimsSchema = pipe(
@@ -34,6 +35,7 @@ const tokenClaimsSchema = pipe(
     issuer: claims.iss,
     subject: claims.sub,
     expiresAt: claims.exp,
+    room: claims.room,
     displayName: typeof claims.name === 'string' && claims.name.length > 0 ? claims.name : claims.sub,
   })),
   check(claims => claims.displayName.length <= MAX_IDENTITY_TEXT_LENGTH),
@@ -136,7 +138,7 @@ const ISSUERS = new Map<string, IssuerVerifier>([
     },
   ],
 ]);
-export const verifyIdentity = async (authorization: string | undefined, secrets: IdentitySecrets): Promise<IdentityResult> => {
+export const verifyIdentity = async (authorization: string | undefined, roomId: string, secrets: IdentitySecrets): Promise<IdentityResult> => {
   if (authorization === undefined || !authorization.startsWith('Bearer ')) {
     return {
       ok: false,
@@ -203,6 +205,12 @@ export const verifyIdentity = async (authorization: string | undefined, secrets:
     return {
       ok: false,
       code: 'ExpiredToken',
+    };
+  }
+  if (claims.room !== roomId) {
+    return {
+      ok: false,
+      code: 'RoomMismatch',
     };
   }
   return {
