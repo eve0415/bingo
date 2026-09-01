@@ -1,0 +1,33 @@
+{
+  "name": "@bingo/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wasm": "pnpm --filter @bingo/wasm build",
+    "generate:bindings": "pnpm --filter @bingo/wasm generate:bindings",
+    "predev": "pnpm build:wasm",
+    "dev": "wrangler dev",
+    "predeploy": "pnpm build:wasm",
+    "deploy": "wrangler deploy",
+    "pretest": "pnpm build:wasm",
+    "pretest:coverage": "pnpm build:wasm",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "types": "wrangler types --env-file .dev.vars.example",
+    "generate": "pnpm generate:bindings && pnpm build:wasm && pnpm types"
+  },
+  "dependencies": {
+    "@bingo/wasm": "workspace:*",
+    "hono": "4.13.5",
+    "valibot": "1.4.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@types/node": "24.13.3",
+    "@vitest/coverage-istanbul": "4.1.11",
+    "vite": "8.2.2",
+    "vitest": "4.1.11",
+    "wrangler": "4.127.1"
+  }
+}

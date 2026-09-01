@@ -16,5 +16,6 @@
     }
   },
   "image": "mcr.microsoft.com/devcontainers/rust:2.0.16-trixie",
-  "name": "bingo"
+  "name": "bingo",
+  "postCreateCommand": "cargo install wasm-bindgen-cli --version '=0.2.127' --locked"
 }

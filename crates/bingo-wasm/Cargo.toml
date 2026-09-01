@@ -1,0 +1,21 @@
+[package]
+name = "bingo-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+bingo-board.workspace = true
+bingo-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ts-rs.workspace = true
+wasm-bindgen.workspace = true
