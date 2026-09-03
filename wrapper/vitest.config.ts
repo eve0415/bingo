@@ -26,9 +26,6 @@ export default defineConfig({
         configPath: './wrangler.jsonc',
       },
       miniflare: {
-        bindings: {
-          IDENTITY_HMAC_SECRET: 'test-secret',
-        },
         modulesRules: [
           {
             type: 'CompiledWasm',

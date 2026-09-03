@@ -8,13 +8,12 @@ import {
   ROOM_MODE_HEADER,
   SELECTED_PROTOCOL_HEADER,
   VERIFIED_IDENTITY_HEADER,
+  decodeIdentity,
   encodeIdentity,
-  verifyIdentity,
 } from './identity';
 
 interface AppBindings {
   ROOM: Env['ROOM'];
-  IDENTITY_HMAC_SECRET?: string;
 }
 interface AppEnvironment {
   Bindings: AppBindings;
@@ -38,8 +37,25 @@ const forward = async (context: Context<AppEnvironment>, mode: 'log' | 'state' |
       400,
     );
   }
-  const offeredProtocol = context.req.header('Sec-WebSocket-Protocol')?.split(',')[0]?.trim();
-  const authorization = context.req.header('Authorization') ?? (mode === 'websocket' && offeredProtocol ? `Bearer ${offeredProtocol}` : undefined);
+  const encodedIdentity = context.req.header(VERIFIED_IDENTITY_HEADER);
+  if (encodedIdentity === undefined) {
+    return context.json(
+      {
+        error: 'MissingIdentity',
+      },
+      401,
+    );
+  }
+  const identity = decodeIdentity(encodedIdentity);
+  if (identity === null) {
+    return context.json(
+      {
+        error: 'InvalidIdentity',
+      },
+      401,
+    );
+  }
+  const offeredProtocol = mode === 'websocket' ? context.req.header('Sec-WebSocket-Protocol')?.split(',')[0]?.trim() : undefined;
   const headers = new Headers(context.req.raw.headers);
   headers.delete(VERIFIED_IDENTITY_HEADER);
   headers.delete(ROOM_KEY_HEADER);
@@ -49,22 +65,11 @@ const forward = async (context: Context<AppEnvironment>, mode: 'log' | 'state' |
   headers.delete('Authorization');
   headers.delete('Sec-WebSocket-Protocol');
   if (mode !== 'websocket') headers.delete('Upgrade');
-  const verified = await verifyIdentity(authorization, roomId, {
-    hmac: context.env.IDENTITY_HMAC_SECRET,
-  });
-  if (!verified.ok) {
-    return context.json(
-      {
-        error: verified.code,
-      },
-      verified.code === 'MissingIdentitySecret' ? 500 : 401,
-    );
-  }
-  headers.set(VERIFIED_IDENTITY_HEADER, encodeIdentity(verified.identity));
+  headers.set(VERIFIED_IDENTITY_HEADER, encodeIdentity(identity));
   headers.set(ROOM_KEY_HEADER, roomId);
   headers.set(ROOM_MODE_HEADER, mode);
   if (mode === 'log') headers.set(GAME_INDEX_HEADER, String(context.req.param('gameIndex')));
-  if (context.req.header('Authorization') === undefined && offeredProtocol !== undefined) {
+  if (offeredProtocol !== undefined) {
     headers.set(SELECTED_PROTOCOL_HEADER, offeredProtocol);
   }
   const request = new Request(`https://room.internal/rooms/${roomId}`, {

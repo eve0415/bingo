@@ -9,24 +9,11 @@ import { env as workerEnv, exports as workerExports } from 'cloudflare:workers';
 import { describe, expect, it, vi } from 'vitest';
 
 import * as engine from '../src/engine';
-import { ROOM_KEY_HEADER, ROOM_MODE_HEADER, VERIFIED_IDENTITY_HEADER, decodeIdentity, encodeIdentity, verifyIdentity } from '../src/identity';
-import app from '../src/index';
+import { ROOM_KEY_HEADER, ROOM_MODE_HEADER, VERIFIED_IDENTITY_HEADER, decodeIdentity, encodeIdentity } from '../src/identity';
 import { Room } from '../src/room';
 import { DEADLINE_HORIZONS, MAX_PLAYERS } from '../src/settings';
 
-const SECRET = 'test-secret';
-const AUTH_ROOM = 'auth';
-const DEFAULT_JWT_HEADER: Record<string, unknown> = {
-  alg: 'HS256',
-};
 let roomCounter = 0;
-interface Claims {
-  iss?: unknown;
-  sub?: unknown;
-  exp?: unknown;
-  room?: unknown;
-  name?: unknown;
-}
 interface TestClient {
   socket: WebSocket;
   frames: string[];
@@ -38,47 +25,18 @@ const roomName = (label: string): string => {
   roomCounter += 1;
   return `${label}-${roomCounter}`;
 };
-const bytesToBase64Url = (bytes: Uint8Array): string => {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
-};
-const encodePart = (value: unknown): string => bytesToBase64Url(new TextEncoder().encode(JSON.stringify(value)));
-const token = async (claims: Claims = {}, header: Record<string, unknown> = DEFAULT_JWT_HEADER, secret = SECRET): Promise<string> => {
-  const completeClaims = {
-    iss: 'hmac',
-    sub: 'host',
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    room: AUTH_ROOM,
-    ...claims,
-  };
-  const encodedHeader = encodePart(header);
-  const encodedClaims = encodePart(completeClaims);
-  const signingInput = `${encodedHeader}.${encodedClaims}`;
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    {
-      name: 'HMAC',
-      hash: 'SHA-256',
+const identityHeader = (subject = 'host', issuer = 'hmac', displayName = subject): string =>
+  encodeIdentity({
+    player: {
+      issuer,
+      subject,
     },
-    false,
-    ['sign'],
-  );
-  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signingInput)));
-  return `${signingInput}.${bytesToBase64Url(signature)}`;
-};
-const auth = async (room: string, subject = 'host', issuer = 'hmac', name?: string): Promise<string> =>
-  `Bearer ${await token({
-    iss: issuer,
-    sub: subject,
-    room,
-    name,
-  })}`;
-const openClient = async (room: string, subject = 'host', extraHeaders: HeadersInit = {}, displayName?: string): Promise<TestClient> => {
+    displayName,
+  });
+const openClient = async (room: string, subject = 'host', extraHeaders: HeadersInit = {}, displayName = subject, issuer = 'hmac'): Promise<TestClient> => {
   const headers = new Headers(extraHeaders);
   headers.set('Upgrade', 'websocket');
-  headers.set('Authorization', await auth(room, subject, 'hmac', displayName));
+  headers.set(VERIFIED_IDENTITY_HEADER, identityHeader(subject, issuer, displayName));
   const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
     headers,
   });
@@ -120,7 +78,7 @@ const nextMessage = async (client: TestClient): Promise<ServerMessage> => parseS
 const fetchGameLog = async (room: string, gameIndex: number, subject = 'host'): Promise<Response> =>
   workerExports.default.fetch(`https://example.test/rooms/${room}/games/${gameIndex}/log`, {
     headers: {
-      Authorization: await auth(room, subject),
+      [VERIFIED_IDENTITY_HEADER]: identityHeader(subject),
     },
   });
 const nextSnapshot = async (
@@ -377,7 +335,7 @@ describe('front door identity', () => {
     const room = roomName('state-upgrade');
     const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(room),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader(),
         Upgrade: 'websocket',
       },
     });
@@ -402,20 +360,18 @@ describe('front door identity', () => {
       events: 0,
     });
   });
-  it('accepts a browser assertion as the selected websocket protocol', async () => {
+  it('accepts a forwarded websocket protocol', async () => {
     const room = roomName('browser');
-    const assertion = await token({
-      sub: 'browser',
-      room,
-    });
+    const protocol = 'bingo.v1';
     const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('browser'),
         Upgrade: 'websocket',
-        'Sec-WebSocket-Protocol': assertion,
+        'Sec-WebSocket-Protocol': protocol,
       },
     });
     expect(response.status).toBe(101);
-    expect(response.headers.get('Sec-WebSocket-Protocol')).toBe(assertion);
+    expect(response.headers.get('Sec-WebSocket-Protocol')).toBe(protocol);
     const socket = response.webSocket;
     if (socket === null) throw new Error('browser socket is missing');
     socket.accept();
@@ -424,7 +380,7 @@ describe('front door identity', () => {
   it('rejects decoded room ids that are unsafe for internal headers', async () => {
     const response = await workerExports.default.fetch('https://example.test/rooms/bad%0Aroom/state', {
       headers: {
-        Authorization: await auth('bad\nroom'),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader(),
       },
     });
     expect(response.status).toBe(400);
@@ -432,278 +388,30 @@ describe('front door identity', () => {
       error: 'InvalidRoomId',
     });
   });
+  it('rejects a missing identity header', async () => {
+    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
+      headers: {
+        Upgrade: 'websocket',
+      },
+    });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({
+      error: 'MissingIdentity',
+    });
+  });
   it.each([
-    ['absent', undefined, 'MissingAuthorization'],
-    ['malformed header', 'Basic value', 'MissingAuthorization'],
-    ['malformed token', 'Bearer broken', 'MalformedToken'],
-  ])('rejects %s authorization', async (_label, authorization, code) => {
-    const headers = new Headers({
-      Upgrade: 'websocket',
-    });
-    if (authorization !== undefined) {
-      headers.set('Authorization', authorization);
-    }
-    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
-      headers,
-    });
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({
-      error: code,
-    });
-  });
-  it('rejects an unknown issuer', async () => {
+    ['malformed', JSON.stringify({ player: { issuer: 'test', subject: 'host' } })],
+    ['unparseable', '{'],
+  ])('rejects an %s identity header', async (_label, encodedIdentity) => {
     const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
       headers: {
+        [VERIFIED_IDENTITY_HEADER]: encodedIdentity,
         Upgrade: 'websocket',
-        Authorization: await auth(AUTH_ROOM, 'host', 'unknown'),
-      },
-    });
-    expect(await response.json()).toEqual({
-      error: 'UnknownIssuer',
-    });
-  });
-  it('rejects a bad signature', async () => {
-    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
-      headers: {
-        Upgrade: 'websocket',
-        Authorization: `Bearer ${await token(
-          {},
-          {
-            alg: 'HS256',
-          },
-          'wrong-secret',
-        )}`,
-      },
-    });
-    expect(await response.json()).toEqual({
-      error: 'BadSignature',
-    });
-  });
-  it('rejects an expired token', async () => {
-    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
-      headers: {
-        Upgrade: 'websocket',
-        Authorization: `Bearer ${await token({
-          exp: 1,
-        })}`,
-      },
-    });
-    expect(await response.json()).toEqual({
-      error: 'ExpiredToken',
-    });
-  });
-  it('rejects a token minted for another room', async () => {
-    const response = await workerExports.default.fetch(`https://example.test/rooms/${roomName('other')}/ws`, {
-      headers: {
-        Upgrade: 'websocket',
-        Authorization: await auth(AUTH_ROOM),
       },
     });
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
-      error: 'RoomMismatch',
-    });
-  });
-  it('rejects a token claiming another algorithm', async () => {
-    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
-      headers: {
-        Upgrade: 'websocket',
-        Authorization: `Bearer ${await token(
-          {},
-          {
-            alg: 'none',
-          },
-        )}`,
-      },
-    });
-    expect(await response.json()).toEqual({
-      error: 'UnsupportedAlgorithm',
-    });
-  });
-  it('rejects a token without a subject', async () => {
-    const response = await workerExports.default.fetch('https://example.test/rooms/auth/ws', {
-      headers: {
-        Upgrade: 'websocket',
-        Authorization: `Bearer ${await token({
-          sub: undefined,
-        })}`,
-      },
-    });
-    expect(await response.json()).toEqual({
-      error: 'InvalidClaims',
-    });
-  });
-  it('overwrites a forged verified-identity header', async () => {
-    const room = roomName('forged');
-    const forged = encodeIdentity({
-      player: {
-        issuer: 'hmac',
-        subject: 'attacker',
-      },
-      displayName: 'attacker',
-    });
-    const client = await openClient(room, 'alice', {
-      [VERIFIED_IDENTITY_HEADER]: forged,
-    });
-    const snapshot = await nextSnapshot(client);
-    expect(snapshot.view.host.subject).toBe('alice');
-    expect(snapshot.view.cards.map(card => card.owner.subject)).toEqual(['alice']);
-  });
-  it('rejects corrupt compact-token encodings and claim types', async () => {
-    const goodClaims = encodePart({
-      iss: 'hmac',
-      sub: 'host',
-      exp: Math.floor(Date.now() / 1000) + 60,
-      room: AUTH_ROOM,
-    });
-    const goodHeader = encodePart({
-      alg: 'HS256',
-    });
-    const cases: [string, string][] = [
-      ['Bearer %%%.e30.x', 'UnsupportedAlgorithm'],
-      ['Bearer eA.e30.x', 'UnsupportedAlgorithm'],
-      ['Bearer .e30.x', 'MalformedToken'],
-      [`Bearer ${goodHeader}.${goodClaims}.*`, 'MalformedToken'],
-      [
-        `Bearer ${await token(
-          {},
-          {
-            alg: 4,
-          },
-        )}`,
-        'UnsupportedAlgorithm',
-      ],
-      [
-        `Bearer ${await token({
-          iss: 4,
-        })}`,
-        'InvalidClaims',
-      ],
-      [
-        `Bearer ${await token({
-          sub: '',
-        })}`,
-        'InvalidClaims',
-      ],
-      [
-        `Bearer ${await token({
-          sub: 'a'.repeat(257),
-        })}`,
-        'InvalidClaims',
-      ],
-      [
-        `Bearer ${await token({
-          exp: 'soon',
-        })}`,
-        'InvalidClaims',
-      ],
-      [
-        `Bearer ${await token({
-          room: undefined,
-        })}`,
-        'InvalidClaims',
-      ],
-    ];
-    for (const [authorization, code] of cases) {
-      expect(
-        await verifyIdentity(authorization, AUTH_ROOM, {
-          hmac: SECRET,
-        }),
-      ).toEqual({
-        ok: false,
-        code,
-      });
-    }
-    const named = await verifyIdentity(
-      `Bearer ${await token({
-        name: 'Host Name',
-      })}`,
-      AUTH_ROOM,
-      {
-        hmac: SECRET,
-      },
-    );
-    expect(named.ok && named.identity.displayName).toBe('Host Name');
-    const unnamed = await verifyIdentity(
-      `Bearer ${await token({
-        name: '',
-      })}`,
-      AUTH_ROOM,
-      {
-        hmac: SECRET,
-      },
-    );
-    expect(unnamed.ok && unnamed.identity.displayName).toBe('host');
-    // Issuers that emit a null display name must still authenticate, falling back to the subject as any non-string value does.
-    const nullName = await verifyIdentity(
-      `Bearer ${await token({
-        name: null,
-      })}`,
-      AUTH_ROOM,
-      {
-        hmac: SECRET,
-      },
-    );
-    expect(nullName.ok && nullName.identity.displayName).toBe('host');
-  });
-  it('bounds display names before forwarding an identity to a room', async () => {
-    const acceptedName = await verifyIdentity(
-      `Bearer ${await token({
-        name: 'a'.repeat(256),
-      })}`,
-      AUTH_ROOM,
-      {
-        hmac: SECRET,
-      },
-    );
-    expect(acceptedName.ok && acceptedName.identity.displayName).toHaveLength(256);
-    const oversizedDisplayName = `${'a'.repeat(256)}日`;
-    const rejectedName = await verifyIdentity(
-      `Bearer ${await token({
-        name: oversizedDisplayName,
-      })}`,
-      AUTH_ROOM,
-      {
-        hmac: SECRET,
-      },
-    );
-    expect(rejectedName).toEqual({
-      ok: false,
-      code: 'InvalidClaims',
-    });
-  });
-  it('reports a missing issuer-bound signing secret', async () => {
-    const authorization = `Bearer ${await token()}`;
-    expect(
-      await verifyIdentity(authorization, AUTH_ROOM, {
-        hmac: undefined,
-      }),
-    ).toEqual({
-      ok: false,
-      code: 'MissingIdentitySecret',
-    });
-    expect(
-      await verifyIdentity(authorization, AUTH_ROOM, {
-        hmac: '',
-      }),
-    ).toEqual({
-      ok: false,
-      code: 'MissingIdentitySecret',
-    });
-    const response = await app.request(
-      'https://example.test/rooms/auth/state',
-      {
-        headers: {
-          Authorization: authorization,
-        },
-      },
-      {
-        ROOM: workerEnv.ROOM,
-      },
-    );
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({
-      error: 'MissingIdentitySecret',
+      error: 'InvalidIdentity',
     });
   });
   it('rejects malformed internal identity encodings', () => {
@@ -736,6 +444,34 @@ describe('front door identity', () => {
           subject: 'subject',
         },
         displayName: 1,
+      },
+      {
+        player: {
+          issuer: 'hmac',
+          subject: '',
+        },
+        displayName: 'name',
+      },
+      {
+        player: {
+          issuer: 'hmac',
+          subject: 'subject',
+        },
+        displayName: '',
+      },
+      {
+        player: {
+          issuer: 'hmac',
+          subject: 'a'.repeat(257),
+        },
+        displayName: 'name',
+      },
+      {
+        player: {
+          issuer: 'hmac',
+          subject: 'subject',
+        },
+        displayName: 'a'.repeat(257),
       },
     ]) {
       expect(decodeIdentity(JSON.stringify(value))).toBeNull();
@@ -1267,7 +1003,7 @@ describe('room games and projections', () => {
     expect(projected.ok && projected.value).toEqual(finished.snapshot.view);
     const invalid = await workerExports.default.fetch(`https://example.test/rooms/${room}/games/-1/log`, {
       headers: {
-        Authorization: await auth(room, 'alice'),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
       },
     });
     expect(invalid.status).toBe(400);
@@ -1529,8 +1265,8 @@ describe('room games and projections', () => {
     await accepted(alice);
     const full = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('bob'),
         Upgrade: 'websocket',
-        Authorization: await auth(room, 'bob'),
       },
     });
     expect(full.status).toBe(409);
@@ -1544,37 +1280,11 @@ describe('room games and projections', () => {
     await accepted(lockedHost);
     const locked = await workerExports.default.fetch(`https://example.test/rooms/${lockedRoom}/ws`, {
       headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
         Upgrade: 'websocket',
-        Authorization: await auth(lockedRoom, 'alice'),
       },
     });
     expect(locked.status).toBe(409);
-  });
-  it('does not commit a join when the socket attachment fails and allows a clean retry', async () => {
-    const room = roomName('attachment-order');
-    const host = await openClient(room);
-    await nextSnapshot(host);
-    const player: PlayerIdDto = {
-      issuer: 'hmac',
-      subject: 'alice',
-    };
-    const request = internalRequest(room, player, true);
-    const oversizedDisplayName = `${'a'.repeat(8200)}日`;
-    request.headers.set(
-      VERIFIED_IDENTITY_HEADER,
-      encodeIdentity({
-        player,
-        displayName: oversizedDisplayName,
-      }).replace('日', String.raw`\u65e5`),
-    );
-    await expect(workerEnv.ROOM.getByName(room).fetch(request)).rejects.toThrow();
-    expect(await rosterCount(room)).toBe(1);
-    const afterFailure = await nextSnapshotAfterResync(host);
-    expect(afterFailure.view.players.map(participant => participant.subject)).toEqual(['host']);
-    const alice = await openClient(room, 'alice');
-    const retried = await accepted(alice);
-    await accepted(host);
-    expect(retried.snapshot.view.players.map(participant => participant.subject)).toEqual(['host', 'alice']);
   });
   it('restores a departed roster member even when new joins are locked', async () => {
     const room = roomName('returning');
@@ -1650,8 +1360,8 @@ describe('room games and projections', () => {
     expect(alice.frames).toEqual([]);
     const rejected = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
       headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
         Upgrade: 'websocket',
-        Authorization: await auth(room, 'alice'),
       },
     });
     expect(rejected.status).toBe(409);
@@ -1992,7 +1702,7 @@ describe('host departure and alarms', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     const response = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(room),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader(),
       },
     });
     const message: ServerMessage = await response.json();
@@ -2094,7 +1804,7 @@ describe('additional room edges', () => {
     await replaceDeadlines(room, [['room_gc', 1]]);
     const outsiderResponse = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(room, 'outsider'),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('outsider'),
       },
     });
     expect(outsiderResponse.status).toBe(403);
@@ -2104,7 +1814,7 @@ describe('additional room edges', () => {
     expect(await deadlineAt(room, 'room_gc')).toBe(1);
     const stateResponse = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
       headers: {
-        Authorization: await auth(room),
+        [VERIFIED_IDENTITY_HEADER]: identityHeader(),
       },
     });
     expect(stateResponse.status).toBe(200);
@@ -2293,22 +2003,11 @@ describe('direct object boundaries', () => {
     const room = roomName('issuer-scope');
     const host = await openClient(room);
     await nextSnapshot(host);
-    const response = await workerEnv.ROOM.getByName(room).fetch(
-      internalRequest(
-        room,
-        {
-          issuer: 'second',
-          subject: 'host',
-        },
-        true,
-      ),
-    );
-    expect(response.status).toBe(101);
-    const socket = response.webSocket;
-    if (socket === null) throw new Error('direct socket is missing');
-    socket.accept();
+    const second = await openClient(room, 'host', {}, 'Second Host', 'second');
+    await accepted(second);
+    await accepted(host);
     expect(await rosterCount(room)).toBe(2);
-    socket.close(1000, 'complete');
+    await second.close();
   });
   it('rejects missing metadata and reports absent rooms', async () => {
     const room = roomName('direct-errors');

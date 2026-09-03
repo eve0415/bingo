@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowJs": false,
+    "jsx": "react-jsx",
+    "lib": ["DOM", "DOM.Iterable", "ES2024"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2024",
+    "types": ["./worker-configuration.d.ts", "vite/client", "@cloudflare/vitest-pool-workers", "@cloudflare/vitest-pool-workers/types"]
+  },
+  "include": ["app/**/*.ts", "app/**/*.tsx", "src/**/*.ts", "test/**/*.ts", "vite.config.ts", "vitest.config.ts", "worker-configuration.d.ts"]
+}

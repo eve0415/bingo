@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prelint": "pnpm -C worker generate",
+    "prelint": "pnpm -C wrapper generate && pnpm -C activity generate",
     "lint": "oxlint --fix --fix-suggestions --fix-dangerously && oxfmt",
-    "prelint:check": "pnpm -C worker generate",
+    "prelint:check": "pnpm -C wrapper generate && pnpm -C activity generate",
     "lint:check": "oxlint && oxfmt --check"
   },
   "devDependencies": {
@@ -13,7 +13,8 @@
     "oxfmt": "0.65.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "wrangler": "4.127.1"
   },
   "devEngines": {
     "runtime": {

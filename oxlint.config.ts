@@ -10,7 +10,18 @@ export default defineConfig({
     style: 'error',
     suspicious: 'error',
   },
-  ignorePatterns: ['crates/bingo-wasm/pkg', 'crates/bingo-wasm/bindings', 'worker/coverage', 'worker/worker-configuration.d.ts'],
+  ignorePatterns: [
+    '**/.tanstack',
+    '**/.wrangler',
+    'activity/dist',
+    'wrapper/dist',
+    'activity/app/routeTree.gen.ts',
+    'crates/bingo-wasm/pkg',
+    'crates/bingo-wasm/bindings',
+    '**/coverage',
+    'activity/worker-configuration.d.ts',
+    'wrapper/worker-configuration.d.ts',
+  ],
   options: {
     denyWarnings: true,
     maxWarnings: 0,
@@ -92,7 +103,7 @@ export default defineConfig({
   },
   overrides: [
     {
-      files: ['worker/test/**/*.ts'],
+      files: ['activity/test/**/*.ts', 'wrapper/test/**/*.ts'],
       plugins: ['eslint', 'typescript', 'unicorn', 'oxc', 'import', 'node', 'promise', 'vitest'],
       rules: {
         // Stateful Durable Object operations in integration tests must run sequentially.
@@ -114,38 +125,41 @@ export default defineConfig({
       },
     },
     {
-      files: ['oxlint.config.ts', 'oxfmt.config.ts', 'crates/bingo-wasm/wasm.d.ts', 'worker/vitest.config.ts', 'worker/src/index.ts'],
+      files: [
+        'oxlint.config.ts',
+        'oxfmt.config.ts',
+        'activity/src/server.ts',
+        'activity/vite.config.ts',
+        'activity/vitest.config.ts',
+        'crates/bingo-wasm/wasm.d.ts',
+        'wrapper/vite.config.ts',
+        'wrapper/vitest.config.ts',
+        'wrapper/src/index.ts',
+      ],
       rules: {
         // Tool configs, the Worker entrypoint, and wasm modules require default-export interfaces.
         'import/no-default-export': 'off',
       },
     },
     {
-      files: ['worker/vitest.config.ts'],
+      files: ['wrapper/vitest.config.ts'],
       rules: {
         // Vitest configuration runs in Node rather than the Worker runtime.
         'import/no-nodejs-modules': 'off',
       },
     },
     {
-      files: ['worker/src/engine.ts', 'worker/src/room.ts', 'worker/test/**/*.ts'],
+      files: ['wrapper/src/engine.ts', 'wrapper/src/room.ts', 'wrapper/test/**/*.ts'],
       rules: {
         // The wasm bridge and its integration suite intentionally import the complete generated protocol surface.
         'import/max-dependencies': 'off',
       },
     },
     {
-      files: ['worker/src/room.ts'],
+      files: ['wrapper/src/room.ts'],
       rules: {
         // The only unsafe returns are typed decoders for values written by this Worker or validated by Rust.
         'typescript/no-unsafe-return': 'off',
-      },
-    },
-    {
-      files: ['worker/test/cloudflare.d.ts'],
-      rules: {
-        // Cloudflare's GlobalProps contract is exposed through a global namespace for declaration merging.
-        'typescript/no-namespace': 'off',
       },
     },
   ],

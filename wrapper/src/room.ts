@@ -819,12 +819,8 @@ export class Room extends DurableObject<Env> {
       const pair = new WebSocketPair();
       const { 0: client, 1: server } = pair;
       this.ctx.acceptWebSocket(server);
-      try {
-        server.serializeAttachment(identity);
-      } catch (error) {
-        server.close(1009, 'Invalid attachment');
-        throw error;
-      }
+      // The identity schema bounds every string it carries, which is what keeps this attachment inside the size a socket can hold.
+      server.serializeAttachment(identity);
       if (existing === null) this.createRoom(roomId, identity);
       const connection = this.prepareConnection(identity);
       if (connection === null) {

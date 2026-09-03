@@ -1,8 +1,11 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "bingo-worker",
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bingo",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-22",
+  // This Worker is reached only through a service binding; a public route would let anyone claim any identity because the wrapper no longer verifies one.
+  "workers_dev": false,
+  "preview_urls": false,
   "durable_objects": {
     "bindings": [
       {
