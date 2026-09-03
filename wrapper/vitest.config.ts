@@ -23,7 +23,7 @@ export default defineConfig({
     externalizeWasm(),
     cloudflareTest({
       wrangler: {
-        configPath: './wrangler.jsonc',
+        configPath: './wrangler.json',
       },
       miniflare: {
         modulesRules: [

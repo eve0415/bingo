@@ -13,7 +13,7 @@ export default defineConfig({
       // Builds and dev-serves the wrapper alongside, which is what makes the service binding live locally.
       auxiliaryWorkers: [
         {
-          configPath: '../wrapper/wrangler.jsonc',
+          configPath: '../wrapper/wrangler.json',
         },
       ],
       persistState: {
@@ -25,4 +25,14 @@ export default defineConfig({
     }),
     react(),
   ],
+  build: {
+    sourcemap: true,
+  },
+  environments: {
+    client: {
+      build: {
+        sourcemap: false,
+      },
+    },
+  },
 });

@@ -12,7 +12,7 @@ export default defineConfig({
     react(),
     cloudflareTest({
       wrangler: {
-        configPath: './wrangler.jsonc',
+        configPath: './wrangler.json',
       },
       miniflare: {
         bindings: {
