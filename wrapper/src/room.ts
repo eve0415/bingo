@@ -23,6 +23,8 @@ import {
   VERIFIED_IDENTITY_HEADER,
   decodeIdentity,
   parseJson,
+  playerKey,
+  samePlayer,
   verifiedIdentitySchema,
 } from './identity';
 import { clientMessageEnvelopeSchema, commandSchema, configSchema } from './protocol';
@@ -93,8 +95,6 @@ const DEFAULT_CONFIG: ConfigDto = {
 };
 const isVerifiedIdentity = (value: unknown): value is VerifiedIdentity => is(verifiedIdentitySchema, value);
 const errorJson = (error: string, status: number): Response => Response.json({ error }, { status });
-const samePlayer = (left: PlayerIdDto, right: PlayerIdDto): boolean => left.issuer === right.issuer && left.subject === right.subject;
-const playerKey = (player: PlayerIdDto): string => `${player.issuer}\u0000${player.subject}`;
 const decodeStored = <T>(value: string): T => JSON.parse(value);
 const requireEngine = <T>(result: EngineResult<T>): T => {
   if (!result.ok) throw new Error(JSON.stringify(result.error));

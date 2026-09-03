@@ -133,6 +133,12 @@ importers:
 
   activity:
     dependencies:
+      '@bingo/wasm':
+        specifier: workspace:*
+        version: link:../crates/bingo-wasm
+      '@bingo/wrapper':
+        specifier: workspace:*
+        version: link:../wrapper
       '@discord/embedded-app-sdk':
         specifier: 2.5.0
         version: 2.5.0

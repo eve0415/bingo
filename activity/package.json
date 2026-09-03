@@ -18,6 +18,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@bingo/wasm": "workspace:*",
+    "@bingo/wrapper": "workspace:*",
     "@discord/embedded-app-sdk": "2.5.0",
     "@tanstack/react-router": "1.170.32",
     "@tanstack/react-start": "1.168.49",

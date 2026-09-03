@@ -28,6 +28,7 @@ export interface ActivitySession {
   user: ActivityUser;
   /** Absent on the mock path, which has no Discord instance to be a member of. */
   room: RoomProbe | null;
+  roomToken: string | null;
 }
 
 interface Exchanged {
@@ -138,6 +139,7 @@ const openSession = async (): Promise<ActivitySession> => {
       displayName: user.global_name ?? user.username,
     },
     room: exchanged === null ? null : await probeRoom(sdk.instanceId, exchanged.roomToken),
+    roomToken: exchanged?.roomToken ?? null,
   };
 };
 

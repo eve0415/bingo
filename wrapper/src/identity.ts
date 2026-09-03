@@ -30,6 +30,9 @@ type Assert<T extends true> = T;
 export type PlayerIdSchemaMatchesGenerated = Assert<Equal<InferOutput<typeof playerIdSchema>, PlayerIdDto>>;
 
 export type VerifiedIdentity = InferOutput<typeof verifiedIdentitySchema>;
+/** A player id is a pair, so every identity comparison must include both components. */
+export const samePlayer = (left: PlayerIdDto, right: PlayerIdDto): boolean => left.issuer === right.issuer && left.subject === right.subject;
+export const playerKey = (player: PlayerIdDto): string => `${player.issuer}\u0000${player.subject}`;
 export const parseJson = (value: string): unknown => {
   try {
     return JSON.parse(value);

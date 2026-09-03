@@ -9,7 +9,7 @@ const DISCORD_TOKEN_URL = 'https://discord.com/api/oauth2/token';
 const DISCORD_USER_URL = 'https://discord.com/api/users/@me';
 const ACTIVITY_INSTANCES_URL = 'https://discord.com/api/applications';
 /** The player namespace this activity mints under, which keeps its subjects distinct from another front end's. */
-const ISSUER = 'discord';
+export const ISSUER = 'discord';
 /** Long enough to outlast a game, short enough that a leaked token stops working. */
 const TOKEN_LIFETIME_SECONDS = 6 * 60 * 60;
 

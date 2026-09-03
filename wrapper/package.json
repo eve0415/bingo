@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./protocol": "./src/protocol.ts",
+    "./identity": "./src/identity.ts",
+    "./settings": "./src/settings.ts"
+  },
   "scripts": {
     "build:wasm": "pnpm --filter @bingo/wasm build",
     "generate:bindings": "pnpm --filter @bingo/wasm generate:bindings",

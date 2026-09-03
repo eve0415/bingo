@@ -2,7 +2,6 @@ import type { RoomSettings } from './settings';
 import type { CommandDto } from '@bingo/wasm/CommandDto';
 import type { ConfigDto } from '@bingo/wasm/ConfigDto';
 import type { EventDto } from '@bingo/wasm/EventDto';
-import type { HostViewDto } from '@bingo/wasm/HostViewDto';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
 import type { PlayerViewDto } from '@bingo/wasm/PlayerViewDto';
 import type { InferOutput } from 'valibot';
@@ -92,29 +91,29 @@ export type GeneratedSchemaAssertions = [
   Assert<Equal<InferOutput<typeof commandSchema>, CommandDto>>,
 ];
 
-interface RoomInfoBase {
-  settings: RoomSettings;
-  roomId: string;
-  gameIndex: number;
-  host: PlayerIdDto;
-}
+export type RoomInfo =
+  | {
+      settings: RoomSettings;
+      roomId: string;
+      gameIndex: number;
+      host: PlayerIdDto;
+      commitment: null;
+      commitmentConfig: null;
+      commitmentRoster: null;
+    }
+  | {
+      settings: RoomSettings;
+      roomId: string;
+      gameIndex: number;
+      host: PlayerIdDto;
+      /** Pinned wrapper commitment, verifiable from the published config, start roster, room ID, game index, and revealed seed. */
+      commitment: string;
+      commitmentConfig: ConfigDto;
+      commitmentRoster: PlayerIdDto[];
+    };
 
-export type RoomInfo = RoomInfoBase &
-  (
-    | {
-        commitment: null;
-        commitmentConfig: null;
-        commitmentRoster: null;
-      }
-    | {
-        /** Pinned wrapper commitment, verifiable from the published config, start roster, room ID, game index, and revealed seed. */
-        commitment: string;
-        commitmentConfig: ConfigDto;
-        commitmentRoster: PlayerIdDto[];
-      }
-  );
-
-export type RoomView = PlayerViewDto | HostViewDto;
+/** Host and player projections intentionally share this wire contract, so clients need only one validation shape. */
+export type RoomView = PlayerViewDto;
 
 export type ClientMessage =
   | { type: 'command'; command: CommandDto }
