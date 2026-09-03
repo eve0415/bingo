@@ -1,304 +1,278 @@
-import type { RoomState } from '../../app/room/connection';
-import type { EventDto } from '@bingo/wasm/EventDto';
-import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
+import type { UiAction } from '../../app/room/uiState';
 import type { ClientMessage } from '@bingo/wrapper/protocol';
-import type { ReactNode } from 'react';
 
-import { Children, isValidElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Board } from '../../app/room/board';
-import { cellMessage, claimMessage, commandMessage, newGameMessage } from '../../app/room/commands';
-import { initialRoomState } from '../../app/room/connection';
 
-const HOST: PlayerIdDto = {
-  issuer: 'discord',
-  subject: 'host',
-};
-const ME: PlayerIdDto = {
-  issuer: 'discord',
-  subject: 'me',
-};
-const EVENT_LOG: EventDto[] = [
-  { PlayerJoined: { seq: 1, player: ME } },
-  { PlayerLeft: { seq: 2, player: ME } },
-  { MarkPlaced: { seq: 3, player: ME, cardIx: 3, row: 0, col: 0 } },
-  { MarkRemoved: { seq: 4, player: ME, cardIx: 3, row: 0, col: 0 } },
-  { BingoClaimed: { seq: 5, player: ME, cardIx: 3 } },
-  { GameStarted: { seq: 6, actor: HOST } },
-  { NumberDrawn: { seq: 7, actor: HOST, number: 7 } },
-  { DrawUndone: { seq: 8, actor: HOST, number: 7, revoked: [] } },
-  { PlayerKicked: { seq: 9, actor: HOST, target: ME } },
-  { HostTransferred: { seq: 10, actor: HOST, target: ME } },
-  { GameClosed: { seq: 11, actor: HOST } },
-  { WinRecognized: { seq: 12, winners: [ME], patterns: [[0, 1]], atSeq: 12, rank: 1 } },
-];
+import { HOST, ME, NAMES, clickEveryAction, committedRoom, room, state, view } from './fixture';
 
-const roomState = (): RoomState => ({
-  status: 'open',
-  view: {
-    config: {
-      size: 2,
-      freeCenter: false,
-      patterns: [[0, 1]],
-      daub: 'Manual',
-      winDetection: 'Claim',
-      lateJoin: 'Open',
-      winLimit: 'Unlimited',
-      cardsPerPlayer: 1,
-    },
-    phase: 'Running',
-    host: HOST,
-    players: [HOST, ME],
-    drawn: [7, 8],
-    wins: [
-      {
-        winners: [HOST, ME],
-        patterns: [[0, 1]],
-        atSeq: 12,
-        rank: 1,
-      },
-    ],
-    cards: [
-      {
-        owner: ME,
-        cardIx: 3,
-        cells: [7, 8, 9, 10],
-        marked: [0, 3],
-        bingo: [],
-        reach: [[0, 1]],
-      },
-      {
-        owner: HOST,
-        cardIx: 3,
-        cells: [11, 12, 13, 14],
-        marked: [1],
-        bingo: [],
-        reach: [],
-      },
-    ],
-    revealedSeed: null,
-  },
-  room: {
-    settings: {
-      maxPlayers: 25,
-      drawnVisibility: 'Full',
-      hostAutoClose: false,
-      rosterPersistence: 'KeepAcrossGames',
-    },
-    roomId: 'discord-room-1',
-    gameIndex: 4,
-    host: HOST,
-    commitment: null,
-    commitmentConfig: null,
-    commitmentRoster: null,
-  },
-  drawnOrder: [7, 8],
-  log: EVENT_LOG,
-  failure: null,
-  closure: null,
-});
-
-const render = (state: RoomState): string => {
-  const commands: ClientMessage[] = [];
-  return renderToString(
-    <Board
-      me={ME}
-      onCommand={(message): void => {
-        commands.push(message);
-      }}
-      state={state}
-    />,
-  );
-};
-
-interface InteractiveProps {
-  children?: ReactNode;
-  onClick?: () => void;
+interface Sink {
+  sent: ClientMessage[];
+  ui: UiAction[];
 }
 
-const clickEveryAction = (node: ReactNode): void => {
-  Children.forEach(node, child => {
-    if (!isValidElement<InteractiveProps>(child)) return;
-    child.props.onClick?.();
-    clickEveryAction(child.props.children);
-  });
+const sink = (): Sink => ({
+  sent: [],
+  ui: [],
+});
+
+const DESK = {
+  width: 1200,
+  height: 800,
 };
+const PHONE = {
+  width: 390,
+  height: 844,
+};
+const IDLE = {
+  overlay: null,
+  panel: 'board',
+} as const;
 
-describe('the room board', () => {
-  it('renders a complete room projection including simultaneous winners', (): void => {
-    const html = render(roomState());
-    expect(html).toContain('<strong>open</strong>');
-    expect(html).toContain('discord-room-1');
-    expect(html).toContain('Game index');
-    expect(html).toContain('Running');
-    expect(html).toContain('discord:host<!-- --> (host)');
-    expect(html).toContain('discord:me<!-- --> (you)');
-    expect(html).toContain('<strong>8<!-- --> (latest)</strong>');
-    expect(html).toContain('aria-label="Unmark 7" aria-pressed="true"');
-    expect(html).toContain('aria-label="Mark 8" aria-pressed="false"');
-    expect(html).toContain('<mark>7</mark>');
-    expect(html).toContain('Card <!-- -->3<!-- --> for <!-- -->discord:me');
-    expect(html).toContain('Card <!-- -->3<!-- --> for <!-- -->discord:host');
-    expect(html).toContain('<mark>12</mark>');
-    expect(html).not.toContain('aria-label="Mark 11"');
-    expect(html).not.toContain('aria-label="Unmark 12"');
-    expect(html.match(/>Claim<\/button>/gu)).toHaveLength(1);
-    expect(html).not.toContain('disabled=""');
-    expect(html).toContain('Rank <!-- -->1<!-- --> at sequence <!-- -->12<!-- -->: <!-- -->discord:host, discord:me');
-    for (const [index, name] of [
-      'PlayerJoined',
-      'PlayerLeft',
-      'MarkPlaced',
-      'MarkRemoved',
-      'BingoClaimed',
-      'GameStarted',
-      'NumberDrawn',
-      'DrawUndone',
-      'PlayerKicked',
-      'HostTransferred',
-      'GameClosed',
-      'WinRecognized',
-    ].entries()) {
-      expect(html).toContain(`${name}<!-- --> at sequence <!-- -->${index + 1}`);
-    }
-    for (const label of ['Claim', 'Join', 'Leave', 'Start', 'Draw', 'Undo', 'Close', 'New game']) expect(html).toContain(`>${label}</button>`);
-  });
-
-  it('disables owned card actions and room controls until the connection opens', (): void => {
-    const html = render({
-      ...roomState(),
-      status: 'connecting',
-    });
-    expect(html).toContain('aria-pressed="true" disabled=""');
-    expect(html).toContain('<button disabled="" type="button">Join</button>');
-    expect(html.match(/disabled=""/gu)).toHaveLength(12);
-  });
-
-  it('renders closure and refusal details while waiting for a snapshot', (): void => {
-    const html = render({
-      ...initialRoomState,
-      status: 'closed',
-      failure: {
-        origin: 'room',
-        code: 'NotHost',
-        detail: null,
-      },
-      closure: {
-        code: 1008,
-        reason: 'room token rejected',
-      },
-    });
-    expect(html).toContain('Socket closed with code <!-- -->1008<!-- -->: <!-- -->room token rejected');
-    expect(html).toContain('Room-reported failure');
-    expect(html).toContain('<code>NotHost</code>');
-    expect(html).toContain('detail: <!-- -->none');
-    expect(html).toContain('Room details are not available yet.');
-    expect(html).toContain('Waiting for the first room snapshot…');
-  });
-
-  it('renders the detail attached to a room refusal', (): void => {
-    const html = render({
-      ...roomState(),
-      failure: {
-        origin: 'room',
-        code: 'WrongPhase',
-        detail: 'the game is still in the lobby',
-      },
-    });
-    expect(html).toContain('the game is still in the lobby');
-  });
-
-  it('labels a failure raised by the client', (): void => {
-    const html = render({
-      ...roomState(),
-      failure: {
-        origin: 'client',
-        code: 'MalformedMessage',
-        detail: null,
-      },
-    });
-    expect(html).toContain('Client failure');
-  });
-
-  it('dispatches each action through its rendered handler', (): void => {
-    const commands: ClientMessage[] = [];
-    const renderBoard = Board;
-    clickEveryAction(
-      renderBoard({
-        me: ME,
-        onCommand: message => {
-          commands.push(message);
-        },
-        state: roomState(),
-      }),
+describe('the board before the first snapshot', () => {
+  it('says what the connection is doing while it waits', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          status: 'connecting',
+          view: null,
+        }}
+        ui={IDLE}
+      />,
     );
-    expect(commands).toEqual([
-      cellMessage(3, 0, 2, true),
-      cellMessage(3, 1, 2, false),
-      cellMessage(3, 2, 2, false),
-      cellMessage(3, 3, 2, true),
-      claimMessage(3),
-      commandMessage('Join'),
-      commandMessage('Leave'),
-      commandMessage('Start'),
-      commandMessage('Draw'),
-      commandMessage('Undo'),
-      commandMessage('Close'),
-      newGameMessage(),
-    ]);
+    expect(html).toContain('部屋につないでいます');
+    expect(html).toContain('接続しています');
+  });
+
+  it('promises a seat when there is nothing to report', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          view: null,
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('まもなく参加できます。');
   });
 });
 
-describe('board commands', () => {
-  it('builds every always-visible control message', (): void => {
-    expect([
-      commandMessage('Join'),
-      commandMessage('Leave'),
-      commandMessage('Start'),
-      commandMessage('Draw'),
-      commandMessage('Undo'),
-      commandMessage('Close'),
-    ]).toEqual([
-      { type: 'command', command: 'Join' },
-      { type: 'command', command: 'Leave' },
-      { type: 'command', command: 'Start' },
-      { type: 'command', command: 'Draw' },
-      { type: 'command', command: 'Undo' },
-      { type: 'command', command: 'Close' },
-    ]);
-    expect(newGameMessage()).toEqual({ type: 'newGame', config: null });
+describe('the board at the end of a game', () => {
+  it('shows the result of a game somebody won', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          view: {
+            ...view(),
+            phase: 'Finished',
+            wins: [
+              {
+                winners: [ME],
+                patterns: [[0, 1, 2, 3, 4]],
+                atSeq: 9,
+                rank: 1,
+              },
+            ],
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('<h2 data-bingo-result-title="">ビンゴ</h2>');
   });
 
-  it('turns card positions into mark, unmark, and claim messages', (): void => {
-    expect(cellMessage(3, 5, 4, false)).toEqual({
-      type: 'command',
-      command: {
-        Mark: {
-          cardIx: 3,
-          row: 1,
-          col: 1,
+  it('shows the result of a game that was played and won by nobody', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          drawnOrder: [7],
+          view: {
+            ...view(),
+            phase: 'Finished',
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('<h2 data-bingo-result-title="">ビンゴは出ませんでした</h2>');
+  });
+
+  it('returns to the lobby for a finished game that was never played', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          drawnOrder: [],
+          room: committedRoom(),
+          view: {
+            ...view(),
+            phase: 'Finished',
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('コミットメント');
+    expect(html).toContain(`${'a'.repeat(16)} ${'b'.repeat(16)} cc`);
+    expect(html).toContain('ゲーム 7 の開始時に公開');
+    expect(html).not.toContain('data-bingo-result');
+  });
+});
+
+describe('the board in the lobby', () => {
+  it('opens the lobby with nothing committed while the room is still unknown', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          room: null,
+          view: {
+            ...view(),
+            phase: 'Lobby',
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('<p data-bingo-hash="">—</p>');
+    expect(html).toContain('ゲーム開始時に公開されます');
+  });
+});
+
+describe('the board during a running game', () => {
+  it('gives the caller the flashboard', (): void => {
+    const html = renderToString(
+      <Board me={HOST} measure={DESK} names={NAMES} onCommand={(): void => undefined} onUi={(): void => undefined} state={state()} ui={IDLE} />,
+    );
+    expect(html).toContain('data-bingo-flash=""');
+    expect(html).toContain('>ゲームを終了</button>');
+  });
+
+  it('gives a player the card, and routes the roster through the shell state', (): void => {
+    const out = sink();
+    const board = (
+      <Board
+        me={ME}
+        measure={PHONE}
+        names={NAMES}
+        onCommand={(message): void => {
+          out.sent.push(message);
+        }}
+        onUi={(action): void => {
+          out.ui.push(action);
+        }}
+        state={state()}
+        ui={IDLE}
+      />
+    );
+    const html = renderToString(board);
+    expect(html).toContain('data-bingo-play=""');
+    expect(html).toContain('data-bingo-call=""');
+    expect(html).toContain('>ビンゴを宣言</button>');
+    expect(html).not.toContain('data-bingo-flash');
+
+    clickEveryAction(board);
+    expect(out.ui).toEqual([
+      {
+        type: 'open',
+        overlay: {
+          kind: 'roster',
         },
       },
-    });
-    expect(cellMessage(3, 6, 4, true)).toEqual({
-      type: 'command',
-      command: {
-        Unmark: {
-          cardIx: 3,
-          row: 1,
-          col: 2,
-        },
-      },
-    });
-    expect(claimMessage(3)).toEqual({
-      type: 'command',
-      command: {
-        Claim: {
-          cardIx: 3,
-        },
-      },
-    });
+    ]);
+    expect(out.sent).toHaveLength(25);
+  });
+
+  it('drops the call box and the claim while the room is hiding the draw', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={PHONE}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          status: 'closed',
+          room: {
+            ...room(),
+            settings: {
+              ...room().settings,
+              drawnVisibility: 'Hidden',
+            },
+          },
+          view: {
+            ...view(),
+            config: {
+              ...view().config,
+              winDetection: 'Auto',
+            },
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('番号は非公開です。カードだけを見て遊びます');
+    expect(html).toContain('<span data-bingo-status="">接続が切れました</span>');
+    expect(html).toContain('接続が切れました。アクティビティを開き直してください');
+    expect(html).not.toContain('>ビンゴを宣言</button>');
+  });
+
+  it('keeps the claim off a screen with no card to claim on', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={PHONE}
+        names={NAMES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          view: {
+            ...view(),
+            cards: [],
+          },
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('観戦中');
+    expect(html).not.toContain('>ビンゴを宣言</button>');
   });
 });

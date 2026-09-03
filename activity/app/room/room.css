@@ -1,0 +1,1141 @@
+/* Buttons ------------------------------------------------------------------ */
+
+[data-bingo-button] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: var(--touch-min);
+  min-width: var(--touch-min);
+  padding: 0 var(--sp-5);
+  box-sizing: border-box;
+  border: 1.5px solid transparent;
+  border-radius: var(--r-btn);
+  font-family: var(--font-ui);
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-bingo-button][data-size='lg'] {
+  height: var(--touch-comfort);
+  padding: 0 var(--sp-6);
+  font-size: var(--text-lg);
+}
+
+[data-bingo-button][data-block='true'] {
+  display: flex;
+  width: 100%;
+}
+
+[data-bingo-button]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+[data-bingo-button][data-variant='primary'] {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+}
+
+[data-bingo-button][data-variant='secondary'] {
+  background: var(--btn-secondary-bg);
+  color: var(--btn-secondary-fg);
+}
+
+[data-bingo-button][data-variant='ghost'] {
+  background: transparent;
+  color: var(--on-ground);
+  border-color: var(--ground-line);
+}
+
+[data-bingo-button][data-variant='danger'] {
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-fg);
+}
+
+[data-bingo-button][data-variant='paper'] {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+/* Status chips ------------------------------------------------------------- */
+
+[data-bingo-chip] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  min-width: 88px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: var(--r-chip);
+  background: var(--ground-3);
+  color: var(--on-ground);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+[data-bingo-chip][data-size='sm'] {
+  height: 24px;
+  min-width: 72px;
+  padding: 0 8px;
+  font-size: var(--text-xs);
+}
+
+[data-bingo-glyph] {
+  font-size: 0.8em;
+  line-height: 1;
+}
+
+[data-bingo-chip][data-status='waiting'] {
+  color: var(--on-ground-2);
+}
+
+[data-bingo-chip][data-status='reach'] {
+  background: var(--reach);
+  color: var(--reach-ink);
+}
+
+[data-bingo-chip][data-status='bingo'] {
+  background: var(--win);
+  color: var(--win-ink);
+}
+
+[data-bingo-chip][data-status='host'] {
+  background: var(--on-ground);
+  color: var(--ink);
+}
+
+[data-bingo-chip][data-surface='paper'][data-status='waiting'],
+[data-bingo-chip][data-surface='paper'][data-status='playing'] {
+  background: var(--paper-2);
+  color: var(--ink);
+}
+
+/* The card ----------------------------------------------------------------- */
+
+[data-bingo-card] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--card-pad);
+  border-radius: var(--r-card);
+  background: var(--paper);
+  box-shadow: var(--shadow-card);
+  /* A 9×9 board cannot hold a 44px pitch on a phone, so that one card scrolls inside its paper rather than shrinking below the touch floor. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+[data-bingo-card][data-flat='true'] {
+  box-shadow: none;
+  border: 1.5px solid var(--paper-line);
+  padding: var(--sp-2);
+}
+
+[data-bingo-letters],
+[data-bingo-grid] {
+  display: grid;
+}
+
+[data-bingo-letters] {
+  margin-bottom: var(--sp-2);
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: var(--text-lg);
+  letter-spacing: var(--tracking-caps);
+  color: var(--ink-2);
+  line-height: 1;
+  text-align: center;
+}
+
+[data-bingo-grid] {
+  position: relative;
+}
+
+[data-bingo-card][data-size='3'] [data-bingo-letters],
+[data-bingo-card][data-size='3'] [data-bingo-grid] {
+  grid-template-columns: repeat(3, minmax(var(--touch-min), 1fr));
+  gap: var(--cell-gap-5);
+}
+
+[data-bingo-card][data-size='5'] [data-bingo-letters],
+[data-bingo-card][data-size='5'] [data-bingo-grid] {
+  grid-template-columns: repeat(5, minmax(var(--touch-min), 1fr));
+  gap: var(--cell-gap-5);
+}
+
+[data-bingo-card][data-size='7'] [data-bingo-letters],
+[data-bingo-card][data-size='7'] [data-bingo-grid] {
+  grid-template-columns: repeat(7, minmax(var(--touch-min), 1fr));
+  gap: var(--cell-gap-7);
+}
+
+[data-bingo-card][data-size='9'] [data-bingo-letters],
+[data-bingo-card][data-size='9'] [data-bingo-grid] {
+  grid-template-columns: repeat(9, minmax(var(--touch-min), 1fr));
+  gap: var(--cell-gap-9);
+}
+
+[data-bingo-card][data-size='3'] [data-bingo-cell],
+[data-bingo-card][data-size='5'] [data-bingo-cell] {
+  font-size: var(--num-cell-5);
+}
+
+[data-bingo-card][data-size='7'] [data-bingo-cell] {
+  font-size: var(--num-cell-7);
+}
+
+[data-bingo-card][data-size='9'] [data-bingo-cell] {
+  font-size: var(--num-cell-9);
+}
+
+[data-bingo-cell] {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  margin: 0;
+  padding: 0;
+  border: var(--stroke-cell) solid var(--paper-line);
+  border-radius: var(--r-cell);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: var(--tracking-num-tight);
+  line-height: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button[data-bingo-cell] {
+  cursor: pointer;
+}
+
+button[data-bingo-cell][data-state='marked'],
+button[data-bingo-cell][data-state='pending'],
+button[data-bingo-cell][data-state='winning'] {
+  cursor: default;
+}
+
+[data-bingo-cell][data-free='true'] {
+  background: var(--paper-2);
+  letter-spacing: var(--tracking-caps);
+}
+
+/* On the cell this would resolve against the inherited 16px; on the child it resolves against the cell's own numeral size, which is the point. */
+[data-bingo-cell][data-free='true'] [data-bingo-num] {
+  font-size: 0.5em;
+}
+
+[data-bingo-cell][data-state='reach'] {
+  border: var(--stroke-reach) dashed var(--reach-ink);
+  background: var(--reach);
+  font-weight: 700;
+}
+
+[data-bingo-cell][data-state='winning'] {
+  border: var(--stroke-win) solid var(--win);
+}
+
+[data-bingo-num] {
+  position: relative;
+  z-index: 1;
+}
+
+[data-bingo-cell][data-state='marked'] [data-bingo-num],
+[data-bingo-cell][data-state='winning'] [data-bingo-num] {
+  color: var(--daub-ink);
+}
+
+[data-bingo-blot] {
+  position: absolute;
+  inset: 9%;
+  box-sizing: border-box;
+  border-radius: 48% 52% 45% 55% / 55% 45% 55% 45%;
+  background: var(--daub);
+  opacity: 0.94;
+  animation: daub-in var(--dur) var(--ease-daub);
+}
+
+[data-bingo-cell][data-state='pending'] [data-bingo-blot] {
+  background: transparent;
+  border: 2px dotted var(--pending);
+  opacity: 0.7;
+  animation: pending-breathe 1.6s ease-in-out infinite;
+}
+
+[data-bingo-strike] {
+  position: absolute;
+  z-index: 2;
+  border-radius: 999px;
+  background: var(--win);
+  opacity: 0.92;
+  pointer-events: none;
+}
+
+/* The called number -------------------------------------------------------- */
+
+[data-bingo-call] {
+  display: grid;
+  gap: var(--sp-3);
+  color: var(--on-ground);
+}
+
+[data-bingo-call-box] {
+  position: relative;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  height: var(--reserved-call);
+  padding: var(--sp-3) var(--sp-4);
+  box-sizing: border-box;
+  border-radius: var(--r-hero);
+  background: var(--ground-2);
+  box-shadow: var(--shadow-raised);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-box] {
+  height: var(--reserved-call-compact);
+  border-radius: var(--r-btn);
+  padding: 0 var(--sp-3);
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: 'label value progress';
+  align-items: center;
+  justify-items: start;
+  gap: var(--sp-3);
+}
+
+[data-bingo-call-label],
+[data-bingo-call-progress] {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--on-ground-2);
+  white-space: nowrap;
+}
+
+[data-bingo-call-progress] {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-bingo-call][data-variant='hero'] [data-bingo-call-label] {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--sp-4);
+}
+
+[data-bingo-call][data-variant='hero'] [data-bingo-call-progress] {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-4);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-label] {
+  grid-area: label;
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-progress] {
+  grid-area: progress;
+  justify-self: end;
+}
+
+[data-bingo-call-value] {
+  display: flex;
+  align-items: baseline;
+  min-height: var(--num-call);
+  margin-top: var(--sp-2);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: var(--tracking-num-tight);
+  line-height: 1;
+}
+
+/* The number is replaced inside the live region rather than replacing it, so the announcement still fires. */
+[data-bingo-call-swap] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  animation: call-in var(--dur) var(--ease-out);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-swap] {
+  gap: var(--sp-1);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-value] {
+  grid-area: value;
+  min-height: var(--num-call-compact);
+  margin-top: 0;
+  gap: var(--sp-1);
+}
+
+[data-bingo-call-value] [data-bingo-num] {
+  font-size: var(--num-call);
+  font-weight: 700;
+  color: var(--live);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-value] [data-bingo-num] {
+  font-size: var(--num-call-compact);
+}
+
+[data-bingo-letter] {
+  font-size: calc(var(--num-call) * 0.42);
+  font-weight: 600;
+  color: var(--live);
+  letter-spacing: var(--tracking-caps);
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-letter] {
+  font-size: calc(var(--num-call-compact) * 0.5);
+}
+
+[data-bingo-history] {
+  display: flex;
+  gap: var(--sp-2);
+  min-height: var(--touch-min);
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+[data-bingo-history-item] {
+  flex: 0 0 auto;
+  display: grid;
+  grid-auto-flow: column;
+  place-items: center;
+  min-width: var(--touch-min);
+  height: var(--touch-min);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-btn);
+  background: var(--ground-3);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+[data-bingo-history-item] [data-bingo-num] {
+  font-size: var(--num-history);
+  color: var(--on-ground-2);
+}
+
+[data-bingo-history-item] [data-bingo-letter] {
+  font-size: calc(var(--num-history) * 0.6);
+  margin-right: 2px;
+  color: var(--on-ground-2);
+}
+
+/* Roster ------------------------------------------------------------------- */
+
+[data-bingo-roster-row] {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--reserved-row);
+  padding: 0 var(--sp-3);
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--on-ground);
+  font-family: var(--font-ui);
+}
+
+button[data-bingo-roster-row] {
+  cursor: pointer;
+}
+
+[data-bingo-roster-row][data-you='true'] {
+  background: var(--ground-2);
+}
+
+[data-bingo-avatar][data-seed='0'] {
+  background: var(--avatar-0);
+}
+
+[data-bingo-avatar][data-seed='1'] {
+  background: var(--avatar-1);
+}
+
+[data-bingo-avatar][data-seed='2'] {
+  background: var(--avatar-2);
+}
+
+[data-bingo-avatar][data-seed='3'] {
+  background: var(--avatar-3);
+}
+
+[data-bingo-avatar][data-seed='4'] {
+  background: var(--avatar-4);
+}
+
+[data-bingo-avatar] {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: oklch(98% 0 0);
+  font-weight: 700;
+  font-size: var(--text-md);
+}
+
+[data-bingo-avatar-host] {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--ground);
+  background: var(--on-ground);
+  color: var(--ink);
+  font-size: 8px;
+  display: grid;
+  place-items: center;
+}
+
+[data-bingo-roster-text] {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+[data-bingo-roster-name] {
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-bingo-roster-you] {
+  color: var(--on-ground-2);
+  font-weight: 400;
+}
+
+[data-bingo-roster-marks] {
+  min-height: 1.3em;
+  font-size: var(--text-sm);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-ui);
+  color: var(--on-ground-2);
+}
+
+/* Screens ------------------------------------------------------------------ */
+
+[data-bingo-frame],
+[data-bingo-screen] {
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Discord frames the activity with a notch, a swipe zone and curved edges it does not draw around.
+   The insets sit on the measured frame rather than on the screen, so the observer reports the space a layout can actually use. */
+[data-bingo-frame] {
+  box-sizing: border-box;
+  padding-top: var(--discord-safe-area-inset-top, env(safe-area-inset-top, 0px));
+  padding-right: var(--discord-safe-area-inset-right, env(safe-area-inset-right, 0px));
+  padding-bottom: var(--discord-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  padding-left: var(--discord-safe-area-inset-left, env(safe-area-inset-left, 0px));
+}
+
+[data-bingo-screen] {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--on-ground);
+}
+
+[data-bingo-header] {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  height: 48px;
+  padding: 0 var(--sp-4);
+  gap: var(--sp-2);
+}
+
+[data-bingo-header]:empty {
+  display: none;
+}
+
+[data-bingo-main] {
+  min-height: 0;
+  padding: 0 var(--sp-4);
+}
+
+/* A narrow frame buys the card its full-pitch cells back out of the page gutters. */
+[data-bingo-screen][data-dense='true'] [data-bingo-main],
+[data-bingo-screen][data-dense='true'] [data-bingo-header],
+[data-bingo-screen][data-dense='true'] [data-bingo-footer] {
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+}
+
+[data-bingo-footer] {
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+[data-bingo-footer]:empty {
+  display: none;
+}
+
+[data-bingo-wordmark] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+[data-bingo-title] {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+[data-bingo-players],
+[data-bingo-status] {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--on-ground-2);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-bingo-status] {
+  flex: none;
+}
+
+[data-bingo-title],
+[data-bingo-players] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-bingo-actions] {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+[data-bingo-actions]:has(> :only-child) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+[data-bingo-label] {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  color: var(--on-ground-2);
+}
+
+[data-bingo-body] {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-md);
+  line-height: var(--lh-body-ja);
+  color: var(--on-ground-2);
+  text-wrap: pretty;
+}
+
+[data-bingo-fine] {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-body-ja);
+  color: var(--on-ground-2);
+}
+
+[data-bingo-hash] {
+  margin: 0;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  word-break: break-all;
+  color: var(--on-ground-2);
+}
+
+[data-bingo-note] {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: start;
+  padding: var(--sp-5);
+  border-radius: var(--r-hero);
+  background: var(--ground-2);
+  box-shadow: var(--shadow-raised);
+}
+
+[data-bingo-note-title] {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+[data-bingo-columns][data-columns='one'] {
+  grid-template-columns: 1fr;
+}
+
+[data-bingo-columns][data-columns='beside'] {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+[data-bingo-columns][data-columns='split'] {
+  grid-template-columns: 1fr 1fr;
+}
+
+[data-bingo-columns][data-columns='desk'] {
+  grid-template-columns: minmax(320px, 1.1fr) minmax(280px, 1fr) minmax(300px, 420px);
+}
+
+[data-bingo-columns] {
+  display: grid;
+  gap: var(--sp-6);
+  align-content: start;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+[data-bingo-column] {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  min-width: 0;
+}
+
+[data-bingo-section] {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+[data-bingo-options] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+[data-bingo-roster] {
+  display: grid;
+}
+
+[data-bingo-roster-line] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Playing — the one screen that must never scroll and never shift ---------- */
+
+[data-bingo-play] {
+  display: grid;
+  gap: var(--sp-4);
+  height: 100%;
+  min-height: 0;
+  justify-items: center;
+  align-content: start;
+  overflow: hidden;
+}
+
+/* Landscape: the header is gone and the reserved notices move beside the card, which is the only way a short frame holds a full-pitch card. */
+[data-bingo-play][data-arrangement='row'] {
+  grid-template-columns: 280px minmax(0, 1fr);
+  align-content: center;
+  align-items: center;
+}
+
+[data-bingo-play][data-arrangement='row'] [data-bingo-play-call] {
+  align-self: stretch;
+}
+
+/* No frame can hold this board at a 44px pitch. Scrolling the card is the lesser defect; clipping it is not one this design accepts. */
+[data-bingo-play][data-tight='true'] {
+  overflow: auto;
+  align-content: start;
+}
+
+[data-bingo-play][data-arrangement='desk'] {
+  grid-template-columns: minmax(0, 1fr) var(--rail);
+  align-content: start;
+}
+
+[data-bingo-play][data-arrangement='desk'] [data-bingo-play-call] {
+  grid-column: 1;
+}
+
+[data-bingo-play-call] {
+  display: grid;
+  gap: var(--sp-2);
+  width: 100%;
+  align-content: start;
+}
+
+[data-bingo-play-card] {
+  display: grid;
+  gap: var(--sp-2);
+  width: 100%;
+  justify-items: center;
+  min-width: 0;
+}
+
+/* The frame is budgeted for one card; a game dealing more makes this region the thing that scrolls. */
+[data-bingo-play-card][data-many='true'] {
+  min-height: 0;
+  overflow: auto;
+}
+
+[data-bingo-rail] {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+[data-bingo-reserved] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+[data-bingo-reserved][data-slot='reach'] {
+  height: var(--reserved-reach);
+  justify-content: flex-start;
+}
+
+[data-bingo-reserved][data-slot='toast'] {
+  height: var(--reserved-toast);
+}
+
+[data-bingo-reach] {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  color: var(--reach);
+  white-space: nowrap;
+}
+
+[data-bingo-toast] {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  max-width: 100%;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-chip);
+  background: var(--ground-3);
+  color: var(--on-ground);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-bingo-toast-dot] {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--on-ground-2);
+  animation: pending-breathe 1.6s ease-in-out infinite;
+}
+
+[data-bingo-hidden-note] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--reserved-call-compact);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-btn);
+  background: var(--ground-2);
+  box-shadow: var(--shadow-raised);
+  color: var(--on-ground-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+[data-bingo-hidden-mark] {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--on-ground-3);
+  border-radius: 2px;
+}
+
+/* The host's flashboard ---------------------------------------------------- */
+
+[data-bingo-flash] {
+  display: grid;
+  gap: 3px;
+}
+
+[data-bingo-flash-row] {
+  display: grid;
+  grid-template-columns: 20px repeat(15, minmax(0, 1fr));
+  gap: 3px;
+  align-items: center;
+}
+
+[data-bingo-flash][data-lettered='false'] [data-bingo-flash-row] {
+  grid-template-columns: 0 repeat(15, minmax(0, 1fr));
+}
+
+[data-bingo-flash-letter] {
+  text-align: center;
+  font-family: var(--font-num);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  letter-spacing: var(--tracking-caps);
+  color: var(--on-ground-2);
+}
+
+[data-bingo-flash] {
+  container-type: inline-size;
+}
+
+[data-bingo-flash-cell] {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  border-radius: 4px;
+  background: var(--ground-2);
+  /* A number nobody has called yet is still a number somebody has to read. */
+  color: var(--on-ground-2);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  /* Sized against the flashboard's own width, so a narrow panel does not collapse every numeral to the floor. */
+  font-size: clamp(9px, 4cqw, 18px);
+  font-weight: 500;
+  line-height: 1;
+}
+
+[data-bingo-flash-cell][data-called='true'] {
+  background: var(--on-ground);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+[data-bingo-flash-cell][data-live='true'] {
+  background: var(--live);
+  color: var(--live-ink);
+  font-weight: 700;
+}
+
+[data-bingo-sitting-out] {
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--sp-6);
+  border-radius: var(--r-card);
+  border: 1.5px dashed var(--ground-line);
+  color: var(--on-ground-2);
+  font-size: var(--text-md);
+  line-height: var(--lh-body-ja);
+  text-align: center;
+}
+
+/* Overlays ----------------------------------------------------------------- */
+
+[data-bingo-scrim] {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  padding: var(--sp-4);
+  /* A solid scrim, never a blur: the ground is the app's own and does not borrow contrast from the frame. */
+  background: oklch(22% 0.03 255 / 0.8);
+}
+
+[data-bingo-surface='sheet'] {
+  align-self: end;
+  justify-self: stretch;
+  display: grid;
+  gap: var(--sp-3);
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--sp-4) var(--sp-2) var(--sp-6);
+  border-radius: var(--r-hero) var(--r-hero) 0 0;
+  background: var(--ground-2);
+}
+
+[data-bingo-sheet-head],
+[data-bingo-dialog-head] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-2);
+}
+
+[data-bingo-surface='dialog'] {
+  place-self: center;
+  display: grid;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 420px;
+  max-height: 100%;
+  overflow: auto;
+  box-sizing: border-box;
+  padding: var(--sp-5);
+  border-radius: var(--r-hero);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+}
+
+[data-bingo-surface='dialog'] [data-bingo-body] {
+  color: var(--ink-2);
+}
+
+[data-bingo-dialog-title] {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+[data-bingo-dialog-actions] {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+[data-bingo-dialog-actions] > * {
+  flex: 1 1 auto;
+}
+
+/* The result --------------------------------------------------------------- */
+
+[data-bingo-result] {
+  display: grid;
+  gap: var(--sp-4);
+  align-content: start;
+  justify-items: center;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  text-align: center;
+}
+
+[data-bingo-result-head] {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: center;
+}
+
+[data-bingo-result-bar] {
+  width: 120px;
+  height: var(--stroke-strike);
+  border-radius: 999px;
+  background: var(--win);
+}
+
+[data-bingo-result-title] {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+[data-bingo-winners] {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+[data-bingo-winner] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+[data-bingo-rank] {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--on-ground-2);
+}
+
+[data-bingo-winner-names] {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+[data-bingo-result-card] {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: center;
+}
+
+[data-bingo-result-cards] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  justify-content: center;
+}
+
+/* The host's panel switcher, which exists only where the three panels cannot stack. */
+[data-bingo-tabs] {
+  display: grid;
+  grid-auto-flow: column;
+  gap: var(--sp-2);
+}
+
+[data-bingo-switch] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--sp-2);
+  min-height: 0;
+}
+
+[data-bingo-panel] {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+}

@@ -1,8 +1,10 @@
 import type { IDiscordSDK } from '@discord/embedded-app-sdk';
 
-import { DiscordSDK, DiscordSDKMock } from '@discord/embedded-app-sdk';
+import { playerKey } from '@bingo/wrapper/identity';
+import { DiscordSDK, DiscordSDKMock, Events } from '@discord/embedded-app-sdk';
 import { safeParse } from 'valibot';
 
+import { ISSUER } from './session';
 import { configSchema, failureSchema, sessionSchema } from './token';
 
 // The worker holds the application id, so a deployment configures it in one place rather than baking it into this bundle.
@@ -98,15 +100,67 @@ const probeRoom = async (room: string, token: string): Promise<RoomProbe> => {
   };
 };
 
+/**
+ * The room knows players only as issuer and subject; Discord is the only thing that knows what to call them.
+ * The subscription lives as long as the document, like the handshake that opens it, so React reads it as an external store instead of owning it.
+ */
+export type ParticipantNames = ReadonlyMap<string, string>;
+
+interface Participant {
+  id: string;
+  username: string;
+  global_name?: string | null | undefined;
+  nickname?: string | undefined;
+}
+
+const namesOf = (participants: readonly Participant[]): ParticipantNames =>
+  new Map(
+    participants.map(participant => [
+      playerKey({
+        issuer: ISSUER,
+        subject: participant.id,
+      }),
+      participant.nickname ?? participant.global_name ?? participant.username,
+    ]),
+  );
+
+let known: ParticipantNames = new Map();
+const listeners = new Set<() => void>();
+
+export const participantNames = {
+  subscribe: (listener: () => void): (() => void) => {
+    listeners.add(listener);
+    return (): void => {
+      listeners.delete(listener);
+    };
+  },
+  read: (): ParticipantNames => known,
+};
+
+const publish = (participants: readonly Participant[]): void => {
+  known = namesOf(participants);
+  for (const listener of listeners) listener();
+};
+
+const watchParticipants = async (sdk: IDiscordSDK): Promise<void> => {
+  await sdk.subscribe(Events.ACTIVITY_INSTANCE_PARTICIPANTS_UPDATE, (event: { participants: Participant[] }): void => {
+    publish(event.participants);
+  });
+  const connected = await sdk.commands.getInstanceConnectedParticipants();
+  publish(connected.participants);
+};
+
 /** Long enough for three round trips to Discord, short enough that a launch which never completes says so instead of waiting. */
 const HANDSHAKE_TIMEOUT_MS = 30_000;
+/** Names are a courtesy. Waiting for them avoids a fallback label flashing to a real one, but a client that is slow about it must not be felt at every launch. */
+const NAMES_TIMEOUT_MS = 1500;
 
 // A client that never answers leaves ready() pending forever, and a pending promise under Suspense is a page that never stops joining.
-const withDeadline = async <T>(work: Promise<T>, message: string): Promise<T> => {
+const withDeadline = async <T>(work: Promise<T>, message: string, limit = HANDSHAKE_TIMEOUT_MS): Promise<T> => {
   const { promise: expired, reject } = Promise.withResolvers<never>();
   const timer = setTimeout(() => {
     reject(new Error(message));
-  }, HANDSHAKE_TIMEOUT_MS);
+  }, limit);
   try {
     return await Promise.race([work, expired]);
   } finally {
@@ -130,6 +184,11 @@ const openSession = async (): Promise<ActivitySession> => {
   const { user } = await sdk.commands.authenticate({
     access_token: exchanged?.accessToken ?? null,
   });
+  try {
+    await withDeadline(watchParticipants(sdk), 'the discord client did not report who is here', NAMES_TIMEOUT_MS);
+  } catch {
+    // A client that will not answer leaves the roster on its fallback labels rather than holding the launch open behind it.
+  }
   return {
     sdk,
     instanceId: sdk.instanceId,

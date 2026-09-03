@@ -285,3 +285,110 @@ describe('room connections', () => {
     });
   });
 });
+
+describe('pending marks', () => {
+  it('holds a sent mark until the room answers and releases it on the snapshot', (): void => {
+    const fake = new FakeOpenTransport();
+    const states: RoomState[] = [];
+    const connection = connectRoom(fake.open, state => {
+      states.push(state);
+    });
+    const handlers = fake.connectedHandlers();
+
+    handlers.onOpen();
+    connection.send({
+      type: 'command',
+      command: {
+        Mark: {
+          cardIx: 0,
+          row: 1,
+          col: 2,
+        },
+      },
+    });
+    connection.send({
+      type: 'command',
+      command: {
+        Unmark: {
+          cardIx: 0,
+          row: 3,
+          col: 4,
+        },
+      },
+    });
+    expect(states.at(-1)?.pending).toEqual([
+      { cardIx: 0, row: 1, col: 2 },
+      { cardIx: 0, row: 3, col: 4 },
+    ]);
+
+    handlers.onMessage(JSON.stringify(SNAPSHOT));
+    expect(states.at(-1)?.pending).toEqual([]);
+    expect(fake.sent).toHaveLength(2);
+  });
+
+  it('releases every sent mark when the room refuses one', (): void => {
+    const fake = new FakeOpenTransport();
+    const states: RoomState[] = [];
+    const connection = connectRoom(fake.open, state => {
+      states.push(state);
+    });
+    const handlers = fake.connectedHandlers();
+
+    handlers.onOpen();
+    connection.send({
+      type: 'command',
+      command: {
+        Mark: {
+          cardIx: 0,
+          row: 1,
+          col: 2,
+        },
+      },
+    });
+    expect(states.at(-1)?.pending).toHaveLength(1);
+
+    handlers.onMessage(JSON.stringify({ type: 'error', code: 'WrongPhase', detail: null }));
+    expect(states.at(-1)).toMatchObject({
+      pending: [],
+      failure: {
+        origin: 'room',
+        code: 'WrongPhase',
+        detail: null,
+      },
+    });
+  });
+
+  it('leaves nothing pending for anything that is not a mark', (): void => {
+    const fake = new FakeOpenTransport();
+    const states: RoomState[] = [];
+    const connection = connectRoom(fake.open, state => {
+      states.push(state);
+    });
+    fake.connectedHandlers().onOpen();
+
+    const messages: ClientMessage[] = [
+      { type: 'command', command: 'Draw' },
+      {
+        type: 'command',
+        command: {
+          Claim: {
+            cardIx: 0,
+          },
+        },
+      },
+      { type: 'newGame', config: null },
+      {
+        type: 'settings',
+        settings: {
+          drawnVisibility: 'Hidden',
+        },
+      },
+      { type: 'resync' },
+    ];
+    for (const message of messages) connection.send(message);
+
+    expect(fake.sent).toHaveLength(messages.length);
+    expect(states).toHaveLength(1);
+    expect(states[0]?.pending).toEqual([]);
+  });
+});

@@ -149,9 +149,16 @@ export default defineConfig({
       },
     },
     {
-      files: ['wrapper/src/engine.ts', 'wrapper/src/room.ts', 'wrapper/test/**/*.ts'],
+      files: [
+        'activity/app/room/**',
+        'activity/app/routes/index.tsx',
+        'activity/app/routes/preview.tsx',
+        'wrapper/src/engine.ts',
+        'wrapper/src/room.ts',
+        'wrapper/test/**/*.ts',
+      ],
       rules: {
-        // The wasm bridge and its integration suite intentionally import the complete generated protocol surface.
+        // The wasm bridge, the screens it feeds, and their integration suites intentionally import the complete generated protocol surface.
         'import/max-dependencies': 'off',
       },
     },

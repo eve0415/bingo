@@ -1,234 +1,105 @@
 import type { RoomState } from './connection';
-import type { EventDto } from '@bingo/wasm/EventDto';
+import type { Measure } from './layout';
+import type { NameLookup } from './names';
+import type { UiAction, UiState } from './uiState';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
 import type { ClientMessage } from '@bingo/wrapper/protocol';
 import type { JSX } from 'react';
 
-import { playerKey, samePlayer } from '@bingo/wrapper/identity';
+import { Host } from './host';
+import { hostLayout, isDense, lobbyColumns, playerLayout } from './layout';
+import { Lobby } from './lobby';
+import { cardsOf, isHost, noticeOf, visibilityOf } from './model';
+import { Player } from './player';
+import { Note, Screen, Wordmark } from './screen';
+import { Win } from './win';
 
-import { cellMessage, claimMessage, commandMessage, newGameMessage } from './commands';
+/** Before the first snapshot there is no room to draw, so the screen says what it is waiting for rather than showing an empty board. */
+const Waiting = ({ notice }: { notice: string | null }): JSX.Element => (
+  <Screen header={<Wordmark players={0} status="接続しています" />}>
+    <Note body={notice ?? 'まもなく参加できます。'} title="部屋につないでいます" />
+  </Screen>
+);
 
-const playerName = (player: PlayerIdDto): string => `${player.issuer}:${player.subject}`;
-const eventSummary = (event: EventDto): { name: string; seq: number } => {
-  if ('PlayerJoined' in event) return { name: 'PlayerJoined', seq: event.PlayerJoined.seq };
-  if ('PlayerLeft' in event) return { name: 'PlayerLeft', seq: event.PlayerLeft.seq };
-  if ('MarkPlaced' in event) return { name: 'MarkPlaced', seq: event.MarkPlaced.seq };
-  if ('MarkRemoved' in event) return { name: 'MarkRemoved', seq: event.MarkRemoved.seq };
-  if ('BingoClaimed' in event) return { name: 'BingoClaimed', seq: event.BingoClaimed.seq };
-  if ('GameStarted' in event) return { name: 'GameStarted', seq: event.GameStarted.seq };
-  if ('NumberDrawn' in event) return { name: 'NumberDrawn', seq: event.NumberDrawn.seq };
-  if ('DrawUndone' in event) return { name: 'DrawUndone', seq: event.DrawUndone.seq };
-  if ('PlayerKicked' in event) return { name: 'PlayerKicked', seq: event.PlayerKicked.seq };
-  if ('HostTransferred' in event) return { name: 'HostTransferred', seq: event.HostTransferred.seq };
-  if ('GameClosed' in event) return { name: 'GameClosed', seq: event.GameClosed.seq };
-  return { name: 'WinRecognized', seq: event.WinRecognized.seq };
-};
-
-export const Board = ({ state, me, onCommand }: { state: RoomState; me: PlayerIdDto; onCommand: (message: ClientMessage) => void }): JSX.Element => {
+/** One room, four screens, chosen by the phase the engine reports and by whether this player is the one calling numbers. */
+export const Board = ({
+  state,
+  me,
+  names,
+  measure,
+  ui,
+  onUi,
+  onCommand,
+}: {
+  state: RoomState;
+  me: PlayerIdDto;
+  names: NameLookup;
+  measure: Measure;
+  ui: UiState;
+  onUi: (action: UiAction) => void;
+  onCommand: (message: ClientMessage) => void;
+}): JSX.Element => {
+  const notice = noticeOf(state);
   const { view } = state;
-  const controlsDisabled = state.status !== 'open';
-  const failureLabel = state.failure?.origin === 'room' ? 'Room-reported failure' : 'Client failure';
+  if (view === null) return <Waiting notice={notice} />;
+  const visibility = visibilityOf(state);
+  const host = isHost(view, me);
+  // A game the host replaced from the lobby is closed and reopened in one exchange; a finished game with nothing to report has no result to show for it.
+  if (view.phase === 'Finished' && (view.wins.length > 0 || state.drawnOrder.length > 0)) {
+    return <Win dense={isDense(measure)} host={host} names={names} notice={notice} onSend={onCommand} players={view.players.length} view={view} />;
+  }
+  if (view.phase !== 'Running') {
+    return (
+      <Lobby
+        commitment={state.room?.commitment ?? null}
+        gameIndex={state.room?.gameIndex ?? 0}
+        host={host}
+        me={me}
+        names={names}
+        notice={notice}
+        onSend={onCommand}
+        view={view}
+        visibility={visibility}
+        columns={lobbyColumns(measure)}
+        dense={isDense(measure)}
+      />
+    );
+  }
+  if (host) {
+    return (
+      <Host
+        dense={isDense(measure)}
+        drawnOrder={state.drawnOrder}
+        layout={hostLayout(measure, view.config.size)}
+        me={me}
+        names={names}
+        notice={notice}
+        onSend={onCommand}
+        onUi={onUi}
+        pending={state.pending}
+        ui={ui}
+        view={view}
+        visibility={visibility}
+      />
+    );
+  }
   return (
-    <main>
-      <h1>Bingo room</h1>
-      <p>
-        Connection: <strong>{state.status}</strong>
-      </p>
-      {state.closure === null ? null : (
-        <p>
-          Socket closed with code {state.closure.code}: {state.closure.reason}
-        </p>
-      )}
-      {state.failure === null ? null : (
-        <p>
-          {failureLabel}: <code>{state.failure.code}</code>; detail: {state.failure.detail ?? 'none'}
-        </p>
-      )}
-
-      {state.room === null ? (
-        <p>Room details are not available yet.</p>
-      ) : (
-        <dl>
-          <dt>Room</dt>
-          <dd>{state.room.roomId}</dd>
-          <dt>Game index</dt>
-          <dd>{state.room.gameIndex}</dd>
-        </dl>
-      )}
-
-      {view === null ? (
-        <p>Waiting for the first room snapshot…</p>
-      ) : (
-        <>
-          <dl>
-            <dt>Phase</dt>
-            <dd>{view.phase}</dd>
-            <dt>Host</dt>
-            <dd>{playerName(view.host)}</dd>
-          </dl>
-
-          <section>
-            <h2>Players</h2>
-            <ul>
-              {view.players.map(player => (
-                <li key={playerKey(player)}>
-                  {playerName(player)}
-                  {samePlayer(player, me) ? ' (you)' : ''}
-                  {samePlayer(player, view.host) ? ' (host)' : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section>
-            <h2>Drawn numbers</h2>
-            <ol>
-              {state.drawnOrder.map((number, index) => (
-                <li key={`${index}:${number}`}>{index === state.drawnOrder.length - 1 ? <strong>{number} (latest)</strong> : number}</li>
-              ))}
-            </ol>
-          </section>
-
-          <section>
-            <h2>Cards</h2>
-            {view.cards.map(card => {
-              const owned = samePlayer(card.owner, me);
-              const markedPositions = new Set(card.marked);
-              // Card commands carry no owner, so acting on another player's card would target the actor's card at the same index.
-              return (
-                <article key={`${playerKey(card.owner)}:${card.cardIx}`}>
-                  <h3>
-                    Card {card.cardIx} for {playerName(card.owner)}
-                  </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${view.config.size}, minmax(0, 1fr))` }}>
-                    {card.cells.map((number, index) => {
-                      const marked = markedPositions.has(index);
-                      if (!owned) return <span key={index}>{marked ? <mark>{number}</mark> : number}</span>;
-                      return (
-                        <button
-                          aria-label={`${marked ? 'Unmark' : 'Mark'} ${number}`}
-                          aria-pressed={marked}
-                          disabled={controlsDisabled}
-                          key={index}
-                          onClick={() => {
-                            onCommand(cellMessage(card.cardIx, index, view.config.size, marked));
-                          }}
-                          type="button"
-                        >
-                          {marked ? <mark>{number}</mark> : number}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {owned ? (
-                    <button
-                      disabled={controlsDisabled}
-                      onClick={() => {
-                        onCommand(claimMessage(card.cardIx));
-                      }}
-                      type="button"
-                    >
-                      Claim
-                    </button>
-                  ) : null}
-                </article>
-              );
-            })}
-          </section>
-
-          <section>
-            <h2>Recognized wins</h2>
-            <ol>
-              {view.wins.map((win, index) => (
-                <li key={`${win.rank}:${win.atSeq}:${index}`}>
-                  Rank {win.rank} at sequence {win.atSeq}: {win.winners.map(playerName).join(', ')}
-                </li>
-              ))}
-            </ol>
-          </section>
-        </>
-      )}
-
-      <section>
-        <h2>Recent events</h2>
-        <ol>
-          {state.log.map((event, index) => {
-            const summary = eventSummary(event);
-            return (
-              <li key={`${summary.name}:${summary.seq}:${index}`}>
-                {summary.name} at sequence {summary.seq}
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-
-      <section>
-        <h2>Controls</h2>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Join'));
-          }}
-          type="button"
-        >
-          Join
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Leave'));
-          }}
-          type="button"
-        >
-          Leave
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Start'));
-          }}
-          type="button"
-        >
-          Start
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Draw'));
-          }}
-          type="button"
-        >
-          Draw
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Undo'));
-          }}
-          type="button"
-        >
-          Undo
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(commandMessage('Close'));
-          }}
-          type="button"
-        >
-          Close
-        </button>
-        <button
-          disabled={controlsDisabled}
-          onClick={() => {
-            onCommand(newGameMessage());
-          }}
-          type="button"
-        >
-          New game
-        </button>
-      </section>
-    </main>
+    <Player
+      drawnOrder={state.drawnOrder}
+      layout={playerLayout(measure, view.config.size, {
+        showCall: visibility !== 'Hidden',
+        footer: view.config.winDetection === 'Claim' && cardsOf(view, me).length > 0,
+      })}
+      me={me}
+      names={names}
+      notice={notice}
+      offline={state.status !== 'open'}
+      onSend={onCommand}
+      onUi={onUi}
+      pending={state.pending}
+      ui={ui}
+      view={view}
+      visibility={visibility}
+    />
   );
 };

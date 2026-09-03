@@ -292,8 +292,10 @@ const expectRestrictedMarkEvent = async (host: TestClient, alice: TestClient, ki
   expect(hostResult.events.events.some(event => kind in event)).toBe(false);
   expect(aliceResult.events.events.some(event => kind in event)).toBe(true);
 };
-const recognizedWinFor = (events: EventDto[], subject: string): EventDto | undefined =>
-  events.find(event => 'WinRecognized' in event && event.WinRecognized.winners.some(player => player.subject === subject));
+const winPatternsFor = (events: EventDto[], subject: string): number[][] =>
+  events.flatMap(event =>
+    'WinRecognized' in event && event.WinRecognized.winners.some(player => player.subject === subject) ? event.WinRecognized.patterns : [],
+  );
 const DEFAULT_PLAYER: PlayerIdDto = {
   issuer: 'hmac',
   subject: 'host',
@@ -653,7 +655,9 @@ describe('room games and projections', () => {
     expect(winningHost.snapshot.view.wins[0].winners.map(player => player.subject)).toEqual(['alice']);
     expect(winningHost.snapshot.view.wins[0].patterns).toEqual([]);
     expect(winningAlice.snapshot.view.wins[0].patterns).toEqual([[0]]);
-    expect(recognizedWinFor(winningHost.events.events, 'alice')).toEqual(recognizedWinFor(winningAlice.events.events, 'alice'));
+    // The event carries the same board position the projection blanks, so both deliveries have to withhold it from everyone but the winner.
+    expect(winPatternsFor(winningHost.events.events, 'alice')).toEqual([]);
+    expect(winPatternsFor(winningAlice.events.events, 'alice')).toEqual([[0]]);
     host.send({
       type: 'command',
       command: 'Close',
@@ -1524,6 +1528,40 @@ describe('room games and projections', () => {
     await accepted(host);
     expect(await deadlineAt(room, 'reveal_backstop')).toBeNull();
   });
+  it('keeps playing after a recognised win under the default configuration', async () => {
+    const room = roomName('default-win-limit');
+    const host = await openClient(room);
+    const opening = await nextSnapshot(host);
+    // A room does not know what it is being played for, so nobody winning is what ends it.
+    expect(opening.view.config.winLimit).toBe('Unlimited');
+    host.send({
+      type: 'newGame',
+      config: {
+        ...opening.view.config,
+        freeCenter: false,
+        patterns: [[0]],
+      },
+    });
+    const replaced = await replacementAccepted(host);
+    expect(replaced.snapshot.view.config.winLimit).toBe('Unlimited');
+    host.send({
+      type: 'command',
+      command: 'Start',
+    });
+    await accepted(host);
+    let wins = 0;
+    for (let draw = 0; draw < 75 && wins === 0; draw += 1) {
+      host.send({
+        type: 'command',
+        command: 'Draw',
+      });
+      const drawn = await accepted(host);
+      wins = drawn.snapshot.view.wins.length;
+      expect(drawn.snapshot.view.phase).toBe('Running');
+      expect(drawn.snapshot.view.revealedSeed).toBeNull();
+    }
+    expect(wins).toBe(1);
+  });
   it('updates cached status after an automatic win', async () => {
     const room = roomName('automatic-finish');
     const host = await openClient(room);
@@ -1603,6 +1641,29 @@ describe('host departure and alarms', () => {
     });
     const result = await nextSnapshot(alice);
     expect(result.room.host.subject).toBe('alice');
+  });
+  it('closes the game when a lone host quits and its absence expires', async () => {
+    const room = roomName('lone-absence');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    host.send({
+      type: 'command',
+      command: 'Start',
+    });
+    await accepted(host);
+    // Quitting the activity is how someone leaves a room, so the socket closing is the departure the wrapper has to act on.
+    await host.close();
+    await scheduler.wait(10);
+    const stub = workerEnv.ROOM.getByName(room);
+    await runInDurableObject(stub, (_instance, state) => {
+      state.storage.sql.exec('UPDATE deadlines SET at = ? WHERE kind = ?', 1, 'host_absent');
+    });
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    const rejoined = await openClient(room);
+    const result = await nextSnapshot(rejoined);
+    expect(result.view.phase).toBe('Finished');
+    expect(result.view.revealedSeed).toBe(await storedSeed(room));
+    await rejoined.close();
   });
   it("does not postpone an absent host's deadline when another player reconnects", async () => {
     const room = roomName('stable-host-deadline');
@@ -1740,7 +1801,7 @@ describe('host departure and alarms', () => {
   });
 });
 describe('additional room edges', () => {
-  it('arms the empty-room deadline when a lone host departs', async () => {
+  it('closes the game and arms the empty-room deadline when a lone host departs', async () => {
     const room = roomName('lone-departure');
     const host = await openClient(room);
     await nextSnapshot(host);
@@ -1750,6 +1811,9 @@ describe('additional room edges', () => {
     });
     const result = await accepted(host);
     expect(result.snapshot.room.host.subject).toBe('host');
+    // Nobody is left to call numbers, so the game ends with the host rather than staying open behind the empty-room deadline.
+    expect(result.snapshot.view.phase).toBe('Finished');
+    expect(result.snapshot.view.revealedSeed).toBe(await storedSeed(room));
     const armed = await runInDurableObject(
       workerEnv.ROOM.getByName(room),
       (_instance, state) =>

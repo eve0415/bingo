@@ -90,7 +90,8 @@ const DEFAULT_CONFIG: ConfigDto = {
   daub: 'Auto',
   winDetection: 'Auto',
   lateJoin: 'Closed',
-  winLimit: 'FirstOnly',
+  // A party keeps drawing until the gifts are gone, so a recognised win is not the end of anything unless the host says how many are.
+  winLimit: 'Unlimited',
   cardsPerPlayer: 1,
 };
 const isVerifiedIdentity = (value: unknown): value is VerifiedIdentity => is(verifiedIdentitySchema, value);
@@ -231,13 +232,25 @@ const redactOrder = (values: number[], settings: RoomSettings, phase: PlayerView
   if (phase !== 'Running' || settings.drawnVisibility === 'Full') return values;
   return settings.drawnVisibility === 'LatestOnly' ? newest(values) : [];
 };
+/** A recognised win names the cells that completed it, which is the board position the projection already refuses to publish; the event has to refuse it too or the redaction is only half applied. */
+const redactWin = (event: EventDto, recipient: PlayerIdDto): EventDto => {
+  if (!('WinRecognized' in event) || event.WinRecognized.winners.every(winner => samePlayer(winner, recipient))) return event;
+  return {
+    WinRecognized: {
+      ...event.WinRecognized,
+      patterns: [],
+    },
+  };
+};
 const redactEvents = (events: EventDto[], settings: RoomSettings, phase: PlayerViewDto['phase'], recipient: PlayerIdDto): EventDto[] => {
   if (phase !== 'Running' || settings.drawnVisibility === 'Full') return events;
-  return events.filter(event => {
-    if (isDrawEvent(event)) return false;
-    const player = markEventPlayer(event);
-    return player === null || samePlayer(player, recipient);
-  });
+  return events
+    .filter(event => {
+      if (isDrawEvent(event)) return false;
+      const player = markEventPlayer(event);
+      return player === null || samePlayer(player, recipient);
+    })
+    .map(event => redactWin(event, recipient));
 };
 export class Room extends DurableObject<Env> {
   // Hibernation may reset this per-socket limiter; unlike game state, that is harmless and avoids a storage write for every message.
@@ -623,19 +636,24 @@ export class Room extends DurableObject<Env> {
       if (host !== null) this.writeSetting(HOST, host);
     }
   }
+  /** Ends the game the departing host was running, which is what both an auto-closing room and a room with no successor need. */
+  private closeForDepartedHost(game: GameRow, events: EventDto[], oldHost: PlayerIdDto): EventDto[] {
+    const closed = this.apply(game, oldHost, 'Close', 'Finished');
+    if (!closed.ok) return events;
+    this.clearDeadline('reveal_backstop');
+    return [...events, ...closed.value.events];
+  }
   private transferDepartingHost(game: GameRow, events: EventDto[], oldHost: PlayerIdDto): EventDto[] {
     if (!Room.departingHost(events, oldHost)) return events;
     if (this.setting<RoomSettings>(ROOM_SETTINGS).hostAutoClose) {
-      const closed = this.apply(game, oldHost, 'Close', 'Finished');
-      if (!closed.ok) return events;
-      this.clearDeadline('reveal_backstop');
-      return [...events, ...closed.value.events];
+      return this.closeForDepartedHost(game, events, oldHost);
     }
     const target = this.presentPlayers().at(0);
     if (target === undefined) {
+      // A host with nobody to hand the room to is the room; their departure ends the game rather than leaving it open with no one to call numbers.
       this.setDeadline('room_empty', Date.now() + DEADLINE_HORIZONS.roomEmpty);
       this.queueAlarm();
-      return events;
+      return this.closeForDepartedHost(game, events, oldHost);
     }
     const transfer = this.apply(game, oldHost, {
       TransferHost: {
@@ -927,7 +945,9 @@ export class Room extends DurableObject<Env> {
     const host = this.setting<PlayerIdDto>(HOST);
     const target = this.presentPlayers().find(player => !samePlayer(player, host));
     if (target === undefined) {
+      // Nobody is left to take the room over, so the game ends with the host rather than waiting out the empty-room deadline in play.
       this.setDeadline('room_empty', Date.now() + DEADLINE_HORIZONS.roomEmpty);
+      this.closeCurrentGame();
       return;
     }
     const game = this.game();

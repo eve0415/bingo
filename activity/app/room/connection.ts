@@ -17,12 +17,20 @@ export interface RoomClosure {
   reason: string;
 }
 
+/** A mark this client has sent and the room has not yet confirmed. */
+export interface PendingMark {
+  cardIx: number;
+  row: number;
+  col: number;
+}
+
 export interface RoomState {
   status: 'connecting' | 'open' | 'closed';
   view: RoomView | null;
   room: RoomInfo | null;
   drawnOrder: number[];
   log: EventDto[];
+  pending: PendingMark[];
   failure: RoomFailure | null;
   closure: RoomClosure | null;
 }
@@ -33,6 +41,7 @@ export const initialRoomState: RoomState = {
   room: null,
   drawnOrder: [],
   log: [],
+  pending: [],
   failure: null,
   closure: null,
 };
@@ -66,11 +75,13 @@ export const roomSocketUrl = (origin: string, roomId: string): string => `${orig
  */
 export const reduceRoom = (state: RoomState, message: ServerMessage): RoomState => {
   if (message.type === 'snapshot') {
+    // The snapshot is the room's answer to everything sent before it, so nothing stays pending across one.
     return {
       ...state,
       view: message.view,
       room: message.room,
       drawnOrder: message.drawnOrder,
+      pending: [],
       failure: null,
     };
   }
@@ -84,12 +95,20 @@ export const reduceRoom = (state: RoomState, message: ServerMessage): RoomState 
   }
   return {
     ...state,
+    pending: [],
     failure: {
       origin: 'room',
       code: message.code,
       detail: message.detail,
     },
   };
+};
+
+/** A refused mark is a mark the room never took, so a rejection has to release the cell rather than leave it breathing forever. */
+const pendingOf = (message: ClientMessage): PendingMark | null => {
+  if (message.type !== 'command' || typeof message.command === 'string') return null;
+  if ('Mark' in message.command) return message.command.Mark;
+  return 'Unmark' in message.command ? message.command.Unmark : null;
 };
 
 /** Opens a room socket and reports every state it reaches, including the close code, which is the only evidence available when the token never reaches the wrapper. */
@@ -150,7 +169,14 @@ export const connectRoom = (open: OpenTransport, onState: (state: RoomState) => 
         });
         return;
       }
+      const mark = pendingOf(message);
       transport.send(JSON.stringify(message));
+      if (mark !== null) {
+        publish({
+          ...state,
+          pending: [...state.pending, mark],
+        });
+      }
     },
     close: () => {
       if (!active) return;
