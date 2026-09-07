@@ -114,6 +114,8 @@
   /* Anything that appears or changes occupies space sized to its largest occupant, so nothing ever pushes the card. */
   --reserved-call: 168px;
   --reserved-call-compact: 56px;
+  /* The host's compact call carries the last few numbers beside the current one, which is what makes it the taller box. */
+  --reserved-call-recent: 64px;
   --reserved-reach: 24px;
   --reserved-row: 56px;
   --reserved-toast: 48px;
@@ -164,6 +166,18 @@ body {
   }
 }
 
+/* A menu belongs to the row that opened it, so it comes out of that row rather than fading in over the page. */
+@keyframes menu-in {
+  from {
+    transform: translateY(-4px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 @keyframes pending-breathe {
   0%,
   100% {
@@ -171,6 +185,16 @@ body {
   }
   50% {
     opacity: 0.9;
+  }
+}
+
+/* The launch's one moving part that is not the card: a segment crossing a reserved track while a wait is in flight. */
+@keyframes launch-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
   }
 }
 
@@ -185,6 +209,9 @@ body {
 
 [data-bingo-button]:focus-visible,
 [data-bingo-cell]:focus-visible,
+[data-bingo-choice]:has(:focus-visible),
+[data-bingo-menu-item]:focus-visible,
+[data-bingo-menu-toggle]:focus-visible,
 [data-bingo-roster-row]:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
@@ -225,8 +252,17 @@ body {
   }
 
   [data-bingo-blot],
-  [data-bingo-call-value] {
+  [data-bingo-cell][data-state='pending'] [data-bingo-blot],
+  [data-bingo-call-value],
+  [data-bingo-menu],
+  [data-bingo-setting-hint] {
     animation: none;
+  }
+
+  /* Stopped mid-track rather than parked at its start, so a still track does not read as a wait that never began. */
+  [data-bingo-launch-sweep] {
+    animation: none;
+    transform: translateX(150%);
   }
 }
 
@@ -280,7 +316,29 @@ body {
     border: 1px solid CanvasText !important;
   }
 
-  [data-bingo-button] {
+  [data-bingo-button],
+  [data-bingo-choice],
+  [data-bingo-menu-toggle] {
     border: 2px solid ButtonText !important;
+  }
+
+  /* Forced colours drop the fill that says which option is in force, so the chosen one re-declares itself as a selection. */
+  [data-bingo-choice][data-on='true'] {
+    forced-color-adjust: none;
+    background: Highlight !important;
+    color: HighlightText !important;
+  }
+
+  [data-bingo-menu] {
+    border: 1px solid CanvasText !important;
+  }
+
+  [data-bingo-launch-track] {
+    border: 1px solid CanvasText !important;
+    background: Canvas !important;
+  }
+
+  [data-bingo-launch-sweep] {
+    background: Highlight !important;
   }
 }

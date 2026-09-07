@@ -1,7 +1,7 @@
 import { playerKey } from '@bingo/wrapper/identity';
 import { describe, expect, it } from 'vitest';
 
-import { initialUi, uiReducer } from '../../app/room/uiState';
+import { hostOverlay, initialUi, uiReducer } from '../../app/room/uiState';
 
 const TARGET = playerKey({ issuer: 'discord', subject: 'me-0002' });
 
@@ -67,6 +67,17 @@ describe('the overlay state', () => {
         type: 'dismiss',
       }),
     ).toEqual(initialUi);
+  });
+
+  it("hands the host's screen its own kinds and nothing else, since it goes inert behind whatever it is given", (): void => {
+    expect(hostOverlay(null)).toBeNull();
+    expect(hostOverlay({ kind: 'card', player: TARGET })).toEqual({ kind: 'card', player: TARGET });
+    expect(hostOverlay({ kind: 'kick', player: TARGET })).toEqual({ kind: 'kick', player: TARGET });
+    expect(hostOverlay({ kind: 'close' })).toEqual({ kind: 'close' });
+    // The lobby's two, which can outlive the lobby, and the player's one.
+    expect(hostOverlay({ kind: 'menu', player: TARGET })).toBeNull();
+    expect(hostOverlay({ kind: 'promote', player: TARGET })).toBeNull();
+    expect(hostOverlay({ kind: 'roster' })).toBeNull();
   });
 
   it('swaps the panel a phone-sized host is reading without closing anything', (): void => {

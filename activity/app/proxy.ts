@@ -4,13 +4,11 @@ import { env } from 'cloudflare:workers';
 
 import { configured } from './env';
 import { failure } from './failure';
-import { VERIFIED_IDENTITY_HEADER, verifyRoomToken } from './identity';
+import { VERIFIED_IDENTITY_HEADER, bearerToken, verifyRoomToken } from './identity';
 
 /** Browsers cannot set headers on a WebSocket, so the token rides the subprotocol on that one path. */
-const presentedToken = (authorization: string | null, offeredProtocol: string | null): string | null => {
-  if (authorization !== null) return authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
-  return offeredProtocol;
-};
+const presentedToken = (authorization: string | null, offeredProtocol: string | null): string | null =>
+  authorization === null ? offeredProtocol : bearerToken(authorization);
 
 /**
  * The room the caller is asking about, read from the url this worker will forward rather than from the matched parameters.

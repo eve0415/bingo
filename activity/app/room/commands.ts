@@ -34,6 +34,14 @@ export const kickMessage = (target: PlayerIdDto): ClientMessage =>
     },
   });
 
+/** The room follows its host, so handing the role over is one command rather than a rebuild of the room around a new one. */
+export const transferHostMessage = (target: PlayerIdDto): ClientMessage =>
+  commandMessage({
+    TransferHost: {
+      target,
+    },
+  });
+
 /**
  * Patterns are cell positions, so they are only valid for the size that produced them.
  * An empty list asks the engine for the rows, columns and diagonals of whatever size is being started, which is the only shape this room offers.

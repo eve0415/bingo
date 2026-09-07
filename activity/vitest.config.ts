@@ -49,10 +49,11 @@ export default defineConfig({
     }),
   ],
   test: {
+    css: { include: [/room\.css/u] },
     coverage: {
       provider: 'istanbul',
       // Everything the worker serves is reached through the tests; the browser handshake alone needs a DOM.
-      include: ['app/**/*.ts'],
+      include: ['app/**/*.ts', 'app/room/call.tsx'],
       exclude: ['app/discord.ts', 'app/routeTree.gen.ts'],
       reporter: [
         [

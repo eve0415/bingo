@@ -182,6 +182,19 @@ const storedSnapshot = async (room: string): Promise<string> => {
     return row?.blob ?? '';
   });
 };
+/** How many rows a table is holding, which is how a room's storage is asked whether it is still carrying games it has finished with. */
+const rowCount = async (room: string, table: string): Promise<number> => {
+  const stub = workerEnv.ROOM.getByName(room);
+  return runInDurableObject(stub, (_instance, state) => {
+    const row = state.storage.sql
+      .exec<{
+        count: number;
+      }>(`SELECT COUNT(*) AS count FROM ${table}`)
+      .toArray()
+      .at(0);
+    return row?.count ?? -1;
+  });
+};
 const storedSeed = async (room: string): Promise<string> => {
   const stub = workerEnv.ROOM.getByName(room);
   return runInDurableObject(stub, (_instance, state) => {
@@ -932,6 +945,25 @@ describe('room games and projections', () => {
     const log: GameLogResponse = await response.json();
     expect(log.host.subject).toBe('host');
     expect(log.log.length).toBeGreaterThan(0);
+  });
+
+  it('keeps every finished game the room can be asked about, and none of the state rebuilt from it', async () => {
+    const room = roomName('derived-state-pruned');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    for (let game = 0; game < 3; game += 1) {
+      host.send({
+        type: 'newGame',
+        config: OPEN_CONFIG,
+      });
+      await replacementAccepted(host);
+    }
+    // Four games dealt: the first and three replacements. Their logs, configs and seeds are the evidence a player checks the deal against.
+    expect(await rowCount(room, 'games')).toBe(4);
+    // The engine state and the running totals are read only for the game being played, and both rebuild from the log on a miss.
+    expect(await rowCount(room, 'snapshot')).toBe(1);
+    expect(await rowCount(room, 'game_cache')).toBe(1);
+    await host.close();
   });
 
   it('publishes a finished log with the initializing host and enough data to replay it', async () => {
@@ -1685,6 +1717,32 @@ describe('host departure and alarms', () => {
     await nextSnapshot(returnedHost);
     expect(await deadlineAt(room, 'host_absent')).toBeNull();
   });
+  it('starts the absence clock the moment the room is handed to someone who is not on a socket', async () => {
+    const room = roomName('handover-absence');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    await accepted(alice);
+    await accepted(host);
+    await alice.close();
+    await scheduler.wait(10);
+    // Alice is still a participant, so the room can be handed to her; she is simply not connected to receive it.
+    expect(await deadlineAt(room, 'host_absent')).toBeNull();
+    host.send({
+      type: 'command',
+      command: {
+        TransferHost: {
+          target: {
+            issuer: 'hmac',
+            subject: 'alice',
+          },
+        },
+      },
+    });
+    await accepted(host);
+    expect(await deadlineAt(room, 'host_absent')).not.toBeNull();
+    await host.close();
+  });
   it('closes instead of transferring when an auto-closing host departs', async () => {
     for (const command of [
       'Leave',
@@ -1791,6 +1849,7 @@ describe('host departure and alarms', () => {
     expect(await runDurableObjectAlarm(stub)).toBe(true);
     const transferred = await accepted(alice);
     expect(transferred.snapshot.room.host.subject).toBe('alice');
+    expect(transferred.snapshot.view.host.subject).toBe('alice');
     expect(transferred.events.events).toEqual([]);
     alice.send({
       type: 'newGame',
@@ -1824,6 +1883,38 @@ describe('additional room edges', () => {
           .one().count,
     );
     expect(armed).toBe(1);
+  });
+  it('discards a room once every connection has gone', async () => {
+    const room = roomName('vacant-discard');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    await host.close();
+    await scheduler.wait(10);
+    // Closing the last socket is what arms the deadline, so this is asserted on the real close rather than on a planted row.
+    expect(await deadlineAt(room, 'room_vacant')).toBeGreaterThan(Date.now());
+    await replaceDeadlines(room, [['room_vacant', 1]]);
+    expect(await runDurableObjectAlarm(workerEnv.ROOM.getByName(room))).toBe(true);
+    for (const table of ['games', 'events', 'snapshot', 'game_cache', 'roster', 'kicks', 'settings']) {
+      expect(await rowCount(room, table)).toBe(0);
+    }
+    const response = await workerEnv.ROOM.getByName(room).fetch(internalRequest(room));
+    expect(response.status).toBe(404);
+  });
+  it('keeps a room whose player has left the game but not the activity', async () => {
+    const room = roomName('vacant-unseated');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    host.send({
+      type: 'command',
+      command: 'Leave',
+    });
+    await accepted(host);
+    // The seat is empty but the socket is not, so the room belongs to someone who is still looking at it.
+    await replaceDeadlines(room, [['room_vacant', 1]]);
+    expect(await runDurableObjectAlarm(workerEnv.ROOM.getByName(room))).toBe(true);
+    expect(await rowCount(room, 'games')).toBeGreaterThan(0);
+    const response = await workerEnv.ROOM.getByName(room).fetch(internalRequest(room));
+    expect(response.status).toBe(200);
   });
   it('handles each terminal deadline and an empty schedule', async () => {
     const presentRoom = roomName('present-deadline');

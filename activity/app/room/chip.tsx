@@ -26,6 +26,9 @@ const STATUS = {
   },
 } as const satisfies Record<PlayerStatus, { glyph: string; label: string }>;
 
+/** The same word the roster shows, so a status reads identically on the chip and on a Discord profile. */
+export const statusLabel = (status: PlayerStatus): string => STATUS[status].label;
+
 export const StatusChip = ({
   status,
   size = 'md',

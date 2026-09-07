@@ -1,5 +1,4 @@
 import type { UiAction } from '../../app/room/uiState';
-import type { ClientMessage } from '@bingo/wrapper/protocol';
 
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -7,22 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { cellMessage, claimMessage } from '../../app/room/commands';
 import { Player } from '../../app/room/player';
 
-import { HOST, ME, NAMES, OTHER, card, clickEveryAction, view } from './fixture';
-
-interface Sink {
-  sent: ClientMessage[];
-  ui: UiAction[];
-}
-
-const sink = (): Sink => ({
-  sent: [],
-  ui: [],
-});
-
-const IDLE = {
-  overlay: null,
-  panel: 'board',
-} as const;
+import { HOST, IDLE, ME, OTHER, PROFILES, card, clickEveryAction, sink, view } from './fixture';
 
 const SHEET = {
   overlay: {
@@ -54,7 +38,7 @@ describe('the player screen while the card is in play', () => {
         drawnOrder={[5, 20, 31]}
         layout={{ arrangement: 'stack', showCall: true, footer: true, cardMax: 358, callVariant: 'hero', showHistory: true, dense: false, tight: false }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice={null}
         offline={false}
         onUi={(action): void => {
@@ -73,8 +57,8 @@ describe('the player screen while the card is in play', () => {
       />
     );
     const html = renderToString(screen);
-    expect(html).toContain('data-dense="false"');
-    expect(html).toContain('<span data-bingo-status="">接続中</span>');
+    expect(html).toContain('data-edge="base"');
+    expect(html).toContain('<span data-bingo-status="">· <!-- -->接続中</span>');
     expect(html).toContain('data-arrangement="stack" data-bingo-play="" data-tight="false"');
     expect(html).toContain('<div data-bingo-play-card="" data-many="false"');
     expect(html).toContain('style="max-width:358px"');
@@ -105,7 +89,7 @@ describe('the player screen while the card is in play', () => {
         drawnOrder={[5]}
         layout={{ arrangement: 'row', showCall: true, footer: false, cardMax: 328, callVariant: 'hero', showHistory: false, dense: true, tight: true }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice="操作が速すぎます。少し待ってください"
         offline={false}
         onUi={(action): void => {
@@ -128,7 +112,7 @@ describe('the player screen while the card is in play', () => {
       />
     );
     const html = renderToString(screen);
-    expect(html).toContain('data-dense="true"');
+    expect(html).toContain('data-edge="tight"');
     expect(html).toContain('<header data-bingo-header=""></header>');
     expect(html).toContain('data-arrangement="row" data-bingo-play="" data-tight="true"');
     expect(html).toContain('<span data-bingo-call-progress="">—</span>');
@@ -154,7 +138,7 @@ describe('the player screen while the card is in play', () => {
         drawnOrder={[5]}
         layout={{ arrangement: 'stack', showCall: true, footer: true, cardMax: 358, callVariant: 'hero', showHistory: true, dense: false, tight: false }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice={null}
         offline={false}
         onUi={(action): void => {
@@ -199,7 +183,7 @@ describe('the player screen while the card is in play', () => {
         drawnOrder={[5, 20]}
         layout={{ arrangement: 'stack', showCall: false, footer: false, cardMax: 268, callVariant: 'compact', showHistory: false, dense: false, tight: true }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice={null}
         offline={false}
         onSend={(message): void => {
@@ -234,7 +218,7 @@ describe('the player screen with no card of its own', () => {
         drawnOrder={[5, 20]}
         layout={{ arrangement: 'desk', showCall: false, footer: false, cardMax: 428, callVariant: 'compact', showHistory: false, dense: false, tight: false }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice={null}
         offline
         onUi={(action): void => {
@@ -254,7 +238,7 @@ describe('the player screen with no card of its own', () => {
       />
     );
     const html = renderToString(screen);
-    expect(html).toContain('<span data-bingo-status="">接続が切れました</span>');
+    expect(html).toContain('<span data-bingo-status="">· <!-- -->接続が切れました</span>');
     expect(html).not.toContain('再接続');
     expect(html).toContain('番号は非公開です。カードだけを見て遊びます');
     expect(html).toContain('data-bingo-rail=""');
@@ -278,7 +262,7 @@ describe('the player screen with no card of its own', () => {
         drawnOrder={[]}
         layout={{ arrangement: 'stack', showCall: true, footer: false, cardMax: 268, callVariant: 'compact', showHistory: true, dense: false, tight: true }}
         me={ME}
-        names={NAMES}
+        profiles={PROFILES}
         notice={null}
         offline={false}
         onUi={(action): void => {

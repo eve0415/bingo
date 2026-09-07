@@ -1,10 +1,10 @@
 import type { CalledEntry } from './call';
 import type { PlayerStatus } from './chip';
 import type { PendingMark, RoomState } from './connection';
-import type { NameLookup } from './names';
-import type { RosterEntry } from './roster';
+import type { ProfileLookup } from './profiles';
+import type { RosterEntry, RosterMarks } from './roster';
+import type { Overlay, OverlayKind } from './uiState';
 import type { CardViewDto } from '@bingo/wasm/CardViewDto';
-import type { ConfigDto } from '@bingo/wasm/ConfigDto';
 import type { DaubDto } from '@bingo/wasm/DaubDto';
 import type { PhaseDto } from '@bingo/wasm/PhaseDto';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
@@ -14,7 +14,7 @@ import type { RoomView } from '@bingo/wrapper/protocol';
 import { playerKey, samePlayer } from '@bingo/wrapper/identity';
 
 import { letterOf, markCount, poolSize } from './lines';
-import { nameOf, seedOf } from './names';
+import { avatarOf, nameOf, seedOf } from './profiles';
 
 /** How much of the draw the room is willing to show, which the host is subject to as well. */
 export type Visibility = 'Full' | 'LatestOnly' | 'Hidden';
@@ -43,18 +43,20 @@ export const cardsOf = (view: RoomView, player: PlayerIdDto): CardViewDto[] => v
 /** A player's projection carries only their own cards, so a win is read from the roll of recognised winners, which every recipient gets. */
 const hasWon = (view: RoomView, player: PlayerIdDto): boolean => view.wins.some(win => win.winners.some(winner => samePlayer(winner, player)));
 
-const statusOf = (view: RoomView, player: PlayerIdDto, cards: readonly CardViewDto[]): PlayerStatus => {
+export const statusOf = (view: RoomView, player: PlayerIdDto, cards: readonly CardViewDto[]): PlayerStatus => {
   if (samePlayer(player, view.host)) return 'host';
   if (hasWon(view, player) || cards.some(card => card.bingo.length > 0)) return 'bingo';
   if (cards.some(card => card.reach.length > 0)) return 'reach';
   return view.phase === 'Running' ? 'playing' : 'waiting';
 };
 
-const marksLabel = (view: RoomView, cards: readonly CardViewDto[]): string => {
+const marksOf = (view: RoomView, cards: readonly CardViewDto[]): RosterMarks | null => {
   // No cards means the projection withheld them, not that the player has marked nothing.
-  if (view.phase !== 'Running' || cards.length === 0) return '';
-  const marked = cards.reduce((total, card) => total + markCount(card), 0);
-  return `${marked} / ${cards.length * view.config.size * view.config.size}`;
+  if (view.phase !== 'Running' || cards.length === 0) return null;
+  return {
+    marked: cards.reduce((total, card) => total + markCount(card), 0),
+    total: cards.length * view.config.size * view.config.size,
+  };
 };
 
 export interface RosterMember {
@@ -63,8 +65,8 @@ export interface RosterMember {
   readonly cards: readonly CardViewDto[];
 }
 
-/** The room knows players as issuer and subject; everything a person recognises — a name, a colour, a status — is assembled here. */
-export const rosterMembers = (view: RoomView, me: PlayerIdDto, names: NameLookup): RosterMember[] =>
+/** The room knows players as issuer and subject; everything a person recognises — a name, a picture, a colour, a status — is assembled here. */
+export const rosterMembers = (view: RoomView, me: PlayerIdDto, profiles: ProfileLookup): RosterMember[] =>
   view.players.map(player => {
     const cards = cardsOf(view, player);
     return {
@@ -72,15 +74,20 @@ export const rosterMembers = (view: RoomView, me: PlayerIdDto, names: NameLookup
       cards,
       entry: {
         key: playerKey(player),
-        name: nameOf(player, names),
+        name: nameOf(player, profiles),
         status: statusOf(view, player, cards),
         seed: seedOf(player),
+        avatar: avatarOf(player, profiles),
         isYou: samePlayer(player, me),
         isHost: samePlayer(player, view.host),
-        marks: marksLabel(view, cards),
+        marks: marksOf(view, cards),
       },
     };
   });
+
+/** Whoever an overlay is about, once the roster is what decides whether they are still here. */
+export const overlayMember = (overlay: Overlay, members: readonly RosterMember[], kinds: readonly OverlayKind[]): RosterMember | null =>
+  members.find(member => (overlay !== null && 'player' in overlay && kinds.includes(overlay.kind) ? member.entry.key === overlay.player : false)) ?? null;
 
 export interface FlashCell {
   readonly value: number;
@@ -113,14 +120,14 @@ export const isHost = (view: RoomView, me: PlayerIdDto): boolean => samePlayer(v
 export const isSeated = (view: RoomView, me: PlayerIdDto): boolean => view.players.some(player => samePlayer(player, me));
 
 export const DAUB_LABEL = {
-  Auto: '自動でマーク',
+  Auto: '自動',
   Manual: '自分でタップ',
 } as const satisfies Record<DaubDto, string>;
 
 export const VISIBILITY_LABEL = {
-  Full: '番号をすべて表示',
-  LatestOnly: '最新の番号だけ',
-  Hidden: '番号を隠す',
+  Full: 'すべて',
+  LatestOnly: '最新だけ',
+  Hidden: '隠す',
 } as const satisfies Record<Visibility, string>;
 
 export const PHASE_LABEL = {
@@ -131,17 +138,14 @@ export const PHASE_LABEL = {
 
 /** How many people have to reach bingo before the game closes itself; the default is nobody, so the host closes it. */
 export const winLimitLabel = (limit: WinLimitDto): string => {
-  if (limit === 'Unlimited') return '最後まで続ける';
-  return limit === 'FirstOnly' ? '1人で終了' : `${limit.Count}人で終了`;
+  if (limit === 'Unlimited') return '最後まで';
+  return limit === 'FirstOnly' ? '1人' : `${limit.Count}人`;
 };
 
 export const sameWinLimit = (left: WinLimitDto, right: WinLimitDto): boolean => {
   if (typeof left === 'string' || typeof right === 'string') return left === right;
   return left.Count === right.Count;
 };
-
-export const settingsSentence = (config: ConfigDto, visibility: Visibility): string =>
-  `${config.size}×${config.size} · ${DAUB_LABEL[config.daub]} · ${VISIBILITY_LABEL[visibility]} · ${winLimitLabel(config.winLimit)}`;
 
 /** The published commitment is split into readable runs; it is evidence, not decoration, so it is shown in full or not at all. */
 export const commitmentText = (commitment: string | null): string => (commitment === null ? '—' : commitment.replaceAll(/(?<run>.{16})/gu, '$<run> ').trim());
@@ -156,10 +160,10 @@ export interface WinnerGroup {
 }
 
 /** Winners that share a rank are named as equals, because the engine recognised them at the same sequence. */
-export const winnerGroups = (view: RoomView, names: NameLookup): WinnerGroup[] =>
+export const winnerGroups = (view: RoomView, profiles: ProfileLookup): WinnerGroup[] =>
   view.wins.map(win => ({
     rank: win.rank,
-    names: win.winners.map(winner => nameOf(winner, names)).join('、'),
+    names: win.winners.map(winner => nameOf(winner, profiles)).join('、'),
   }));
 
 /** Cards belonging to anyone the room recognised, which is every winner for the host and only their own for a player. */

@@ -9,6 +9,7 @@ import {
   newGameMessage,
   settingsMessage,
   sizeMessage,
+  transferHostMessage,
   winLimitMessage,
 } from '../../app/room/commands';
 
@@ -51,6 +52,17 @@ describe('room commands', () => {
           cardIx: 3,
           row: 1,
           col: 2,
+        },
+      },
+    });
+  });
+
+  it('hands the room to another player', (): void => {
+    expect(transferHostMessage(OTHER)).toEqual({
+      type: 'command',
+      command: {
+        TransferHost: {
+          target: OTHER,
         },
       },
     });

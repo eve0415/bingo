@@ -1,6 +1,7 @@
 import type { ActivitySession } from '../discord';
 import type { OpenTransport, RoomConnection } from '../room/connection';
 import type { Measure } from '../room/layout';
+import type { PresenceSink } from '../room/presence';
 import type { UiAction } from '../room/uiState';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
 import type { ClientMessage } from '@bingo/wrapper/protocol';
@@ -9,9 +10,11 @@ import type { JSX } from 'react';
 import { ClientOnly, createFileRoute } from '@tanstack/react-router';
 import { Suspense, use, useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from 'react';
 
-import { activitySession, participantNames } from '../discord';
+import { activitySession, bootProgress, participantProfiles } from '../discord';
 import { Board } from '../room/board';
 import { connectRoom, initialRoomState, roomSocketUrl } from '../room/connection';
+import { Launch } from '../room/launch';
+import { presenceSink } from '../room/presence';
 import { Note, Screen } from '../room/screen';
 import { initialUi, uiReducer } from '../room/uiState';
 import { ISSUER } from '../session';
@@ -22,7 +25,7 @@ const Standalone = ({ body, title }: { body: string; title: string }): JSX.Eleme
   </Screen>
 );
 
-const Joining = (): JSX.Element => <Standalone body="Discord とつないでいます。" title="参加しています" />;
+const Joining = (): JSX.Element => <Launch step={useSyncExternalStore(bootProgress.subscribe, bootProgress.read, bootProgress.read)} />;
 
 /** Discord hands the activity a frame of any shape, and the screens are chosen from what it measures rather than from a device class. */
 const useMeasure = (): [Measure, (node: HTMLDivElement | null) => (() => void) | undefined] => {
@@ -49,9 +52,19 @@ const useMeasure = (): [Measure, (node: HTMLDivElement | null) => (() => void) |
   return [measure, observe];
 };
 
-const ConnectedRoom = ({ instanceId, roomToken, me }: { instanceId: string; roomToken: string; me: PlayerIdDto }): JSX.Element => {
+const ConnectedRoom = ({
+  instanceId,
+  roomToken,
+  me,
+  presence,
+}: {
+  instanceId: string;
+  roomToken: string;
+  me: PlayerIdDto;
+  presence: PresenceSink;
+}): JSX.Element => {
   const [state, setState] = useState(initialRoomState);
-  const names = useSyncExternalStore(participantNames.subscribe, participantNames.read, participantNames.read);
+  const profiles = useSyncExternalStore(participantProfiles.subscribe, participantProfiles.read, participantProfiles.read);
   const [ui, apply] = useReducer(uiReducer, initialUi);
   // An overlay is opened from a control, so closing it has to give the keyboard back to that control rather than to the document.
   const opener = useRef<Element | null>(null);
@@ -107,13 +120,15 @@ const ConnectedRoom = ({ instanceId, roomToken, me }: { instanceId: string; room
       document.removeEventListener('keydown', onKey);
     };
   }, [onUi]);
-  // React applies autoFocus only to form controls, so the surface is focused here; the exit half already restores the opener.
-  const open = ui.overlay !== null;
+  /* React applies autoFocus only to form controls, so the surface is focused here; the exit half already restores the opener.
+     This follows the overlay rather than whether there is one, because one overlay can open another: a row menu carries no surface,
+     so a dialogue raised from inside it would never be focused while the screen behind it had already gone inert. */
+  const { overlay } = ui;
   useEffect((): void => {
-    if (!open) return;
+    if (overlay === null) return;
     const surface = document.querySelector('[data-bingo-surface]');
     if (surface instanceof HTMLElement) surface.focus();
-  }, [open]);
+  }, [overlay]);
   // An overlay belongs to the game it was opened over; a close dialogue left standing would otherwise act on the next one.
   const game = state.room?.gameIndex;
   useEffect((): void => {
@@ -121,18 +136,35 @@ const ConnectedRoom = ({ instanceId, roomToken, me }: { instanceId: string; room
       type: 'dismiss',
     });
   }, [game]);
+  // The profile card is a courtesy that follows the room, and the sink decides what is worth telling Discord about.
+  useEffect((): void => {
+    presence.update(state, me);
+  }, [state, me, presence]);
+  useEffect((): (() => void) => presence.close, [presence]);
   const onCommand = useCallback((message: ClientMessage): void => {
     current.current?.send(message);
   }, []);
   return (
     <div data-bingo-frame="" ref={observe}>
-      <Board measure={measure} me={me} names={names} onCommand={onCommand} onUi={onUi} state={state} ui={ui} />
+      <Board measure={measure} me={me} profiles={profiles} onCommand={onCommand} onUi={onUi} state={state} ui={ui} />
     </div>
   );
 };
 
 const Session = ({ pending }: { pending: Promise<ActivitySession> }): JSX.Element => {
   const session = use(pending);
+  /* The command reports a refusal only by throwing, and the sink swallows it so that a courtesy can never disturb the room.
+     Written out here because a card that quietly never appears is otherwise indistinguishable from one the client took and chose not to draw. */
+  const [presence] = useState(() =>
+    presenceSink(async activity => {
+      try {
+        return await session.sdk.commands.setActivity({ activity });
+      } catch (error) {
+        console.warn('bingo: presence refused', activity, error);
+        throw error;
+      }
+    }),
+  );
   if (session.roomToken === null) return <Standalone body="Discord のアクティビティとして開いてください。" title="ここでは遊べません" />;
   return (
     <ConnectedRoom
@@ -141,6 +173,7 @@ const Session = ({ pending }: { pending: Promise<ActivitySession> }): JSX.Elemen
         issuer: ISSUER,
         subject: session.user.id,
       }}
+      presence={presence}
       roomToken={session.roomToken}
     />
   );

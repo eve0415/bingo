@@ -11,20 +11,26 @@ describe('the screen shell', () => {
     const html = renderToString(<Screen header={<Wordmark players={4} status="プレイ中" />}>本文</Screen>);
     expect(html).toContain('<footer data-bingo-footer=""></footer>');
     expect(html).toContain('<main data-bingo-main="">本文</main>');
-    expect(html).toContain('data-dense="false"');
+    expect(html).toContain('data-edge="base"');
     expect(html).not.toContain('inert');
-    expect(html).toContain('<span data-bingo-players="">· <!-- -->4<!-- -->人</span>');
-    expect(html).toContain('<span data-bingo-status="">プレイ中</span>');
+    expect(html).toContain('<span data-bingo-players="">4<!-- -->人</span>');
+    expect(html).toContain('<span data-bingo-status="">· <!-- -->プレイ中</span>');
     expect(html).toContain('<h1 data-bingo-title="">Bingo</h1>');
+  });
+
+  it('counts the room without reporting a phase the lobby has nothing to add to', (): void => {
+    const html = renderToString(<Wordmark players={1} />);
+    expect(html).toContain('<span data-bingo-players="">1<!-- -->人</span>');
+    expect(html).not.toContain('data-bingo-status');
   });
 
   it('hangs the overlay outside the frame that must not scroll', (): void => {
     const html = renderToString(
-      <Screen dense footer={<span data-footer="">下</span>} header="頭" overlay={<span data-overlay="">上</span>}>
+      <Screen edge="tight" footer={<span data-footer="">下</span>} header="頭" overlay={<span data-overlay="">上</span>}>
         本文
       </Screen>,
     );
-    expect(html).toContain('data-dense="true"');
+    expect(html).toContain('data-edge="tight"');
     expect(html).toContain('<header data-bingo-header="" inert="">頭</header>');
     expect(html).toContain('<main data-bingo-main="" inert="">本文</main>');
     expect(html).toContain('<footer data-bingo-footer="" inert=""><span data-footer="">下</span></footer>');

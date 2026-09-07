@@ -1,4 +1,5 @@
 import type { RoomState } from '../room/connection';
+import type { ProfileLookup } from '../room/profiles';
 import type { CardViewDto } from '@bingo/wasm/CardViewDto';
 import type { ConfigDto } from '@bingo/wasm/ConfigDto';
 import type { PhaseDto } from '@bingo/wasm/PhaseDto';
@@ -8,23 +9,43 @@ import type { DrawnVisibility } from '@bingo/wrapper/settings';
 import { playerKey } from '@bingo/wrapper/identity';
 import { DEFAULT_SETTINGS } from '@bingo/wrapper/settings';
 
+import { avatarUrl } from '../avatars';
 import { initialRoomState } from '../room/connection';
 
+/** Snowflakes rather than counters, because Discord picks the blank picture out of one and the gallery would otherwise seat six identical people. */
 const HOST: PlayerIdDto = {
   issuer: 'discord',
-  subject: '1000',
+  subject: '1181199416879751241',
 };
 const ME: PlayerIdDto = {
   issuer: 'discord',
-  subject: '2000',
+  subject: '1181199416883945545',
 };
-const OTHERS: PlayerIdDto[] = [3000, 4000, 5000, 6000].map(subject => ({
+const OTHERS: PlayerIdDto[] = ['1181199416888139849', '1181199416892334153', '1181199416896528457', '1181199416900722761'].map(subject => ({
   issuer: 'discord',
-  subject: String(subject),
+  subject,
 }));
 
-export const NAMES = new Map(
-  [HOST, ME, ...OTHERS].map((player, index) => [playerKey(player), ['ゆうき', 'さくら', 'Tomás', 'けんた', 'Ana', 'みなと'][index]]),
+/** One player is left unreported, so the gallery shows both the picture Discord serves and the drawn initial that stands in for it. */
+const UNREPORTED = 2;
+
+export const PROFILES: ProfileLookup = new Map(
+  [HOST, ME, ...OTHERS].map((player, index) => [
+    playerKey(player),
+    {
+      name: ['ゆうき', 'さくら', 'Tomás', 'けんた', 'Ana', 'みなと'][index],
+      avatar:
+        index === UNREPORTED
+          ? null
+          : avatarUrl({
+              id: player.subject,
+              avatar: null,
+              discriminator: '0',
+              guildId: null,
+              guildAvatar: null,
+            }),
+    },
+  ]),
 );
 
 export const SIZES = [3, 5, 7, 9];

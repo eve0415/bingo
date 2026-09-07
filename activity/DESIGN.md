@@ -54,7 +54,7 @@ Cells 6px, card 12px, buttons 10px, hero call box 16px, chips pill. Cell borders
 - **Don't** reinterpret the grid, or add chrome that competes with the card.
 - **Don't** explain bingo to anyone who has played bingo.
 - **Don't** design to the 24px touch floor. 44px minimum, with real gaps between cells: tapping a cell decides who wins.
-- **Don't** use gradients, imagery, texture, blur, or transparency. Backgrounds are flat colour; the card is the only object with a shadow.
+- **Don't** use gradients, imagery, texture, blur, or transparency, with one exception: a player's own Discord picture in the roster, which is theirs rather than the app's. It is 36px, it sits over the drawn initial, and the initial is what shows when the frame will not load it. Backgrounds are flat colour; the card is the only object with a shadow.
 - **Don't** use emoji anywhere, and don't write celebration copy — the strike bar through the completed line is the celebration.
 - **Don't** let a control label wrap. Labels are `white-space: nowrap` and must fit at 375px.
 - **Do** reserve space for anything that can appear, and size the reservation to its largest occupant.

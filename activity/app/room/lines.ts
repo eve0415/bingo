@@ -11,6 +11,8 @@ export interface CardCellView {
   readonly number: number;
   readonly free: boolean;
   readonly state: CellState;
+  /** The cell the room has just called, which the card holds back until the reel has finished rolling it. */
+  readonly live: boolean;
 }
 
 export interface StrikeLine {
@@ -43,22 +45,29 @@ const state = (index: number, sets: { winning: Set<number>; marked: Set<number>;
   return sets.reach.has(index) ? 'reach' : 'open';
 };
 
-/** The generator leaves the free centre at zero, and the engine marks it before the first draw. */
-export const cardCells = (card: CardViewDto, pending: readonly number[]): CardCellView[] => {
+/**
+ * The generator leaves the free centre at zero, and the engine marks it before the first draw.
+ * `live` is the number the room has just called, or null wherever nothing is rolling it: a card marked by hand answers the tap, not the draw.
+ */
+export const cardCells = (card: CardViewDto, pending: readonly number[], live: number | null): CardCellView[] => {
   const winning = union(card.bingo);
   const marked = new Set(card.marked);
   const reach = reachCells(card);
   const sent = new Set(pending);
-  return card.cells.map((value, index) => ({
-    number: value,
-    free: value === 0,
-    state: state(index, {
+  return card.cells.map((value, index) => {
+    const cell = state(index, {
       winning,
       marked,
       reach,
       sent,
-    }),
-  }));
+    });
+    return {
+      number: value,
+      free: value === 0,
+      state: cell,
+      live: value === live && (cell === 'marked' || cell === 'winning'),
+    };
+  });
 };
 
 const lineOf = (pattern: readonly number[], size: number): StrikeLine | null => {

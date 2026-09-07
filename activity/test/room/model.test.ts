@@ -19,14 +19,13 @@ import {
   progressLabel,
   rosterMembers,
   sameWinLimit,
-  settingsSentence,
   visibilityOf,
   winLimitLabel,
   winnerCards,
   winnerGroups,
 } from '../../app/room/model';
 
-import { HOST, ME, NAMES, OTHER, card, committedRoom, config, room, state, view } from './fixture';
+import { HOST, ME, OTHER, PROFILES, card, committedRoom, room, state, view } from './fixture';
 
 const WATCHER: PlayerIdDto = {
   issuer: 'discord',
@@ -122,10 +121,10 @@ describe('draw progress', () => {
 
 describe('the roster', () => {
   it('names, colours and grades every player of a running game', (): void => {
-    const members = rosterMembers(running(), ME, NAMES);
+    const members = rosterMembers(running(), ME, PROFILES);
     expect(members.map(member => member.entry.status)).toEqual(['host', 'bingo', 'reach', 'playing']);
     expect(members.map(member => member.entry.name)).toEqual(['ホストさん', '🎲ぼく', 'プレイヤー 0003', 'プレイヤー 0004']);
-    expect(members.map(member => member.entry.marks)).toEqual(['', '1 / 25', '2 / 25', '']);
+    expect(members.map(member => member.entry.marks)).toEqual([null, { marked: 1, total: 25 }, { marked: 2, total: 25 }, null]);
     expect(members[1].entry.isYou).toBe(true);
     expect(members[0].entry.isHost).toBe(true);
     expect(members[2].cards).toHaveLength(1);
@@ -147,10 +146,10 @@ describe('the roster', () => {
         ],
       },
       ME,
-      NAMES,
+      PROFILES,
     );
     expect(members.map(member => member.entry.status)).toEqual(['host', 'playing', 'bingo']);
-    expect(members.map(member => member.entry.marks)).toEqual(['', '1 / 25', '']);
+    expect(members.map(member => member.entry.marks)).toEqual([null, { marked: 1, total: 25 }, null]);
   });
 
   it('leaves a waiting lobby without mark counts', (): void => {
@@ -162,10 +161,10 @@ describe('the roster', () => {
         cards: [],
       },
       ME,
-      NAMES,
+      PROFILES,
     );
     expect(members[0].entry.status).toBe('waiting');
-    expect(members[0].entry.marks).toBe('');
+    expect(members[0].entry.marks).toBeNull();
   });
 
   it('picks out the cards one player owns', (): void => {
@@ -209,10 +208,10 @@ describe('the flashboard', () => {
 
 describe('the win limit', () => {
   it('says how many wins the room will wait for, in each shape the limit takes', (): void => {
-    expect(winLimitLabel('Unlimited')).toBe('最後まで続ける');
-    expect(winLimitLabel('FirstOnly')).toBe('1人で終了');
-    expect(winLimitLabel({ Count: 3 })).toBe('3人で終了');
-    expect(winLimitLabel({ Count: 7 })).toBe('7人で終了');
+    expect(winLimitLabel('Unlimited')).toBe('最後まで');
+    expect(winLimitLabel('FirstOnly')).toBe('1人');
+    expect(winLimitLabel({ Count: 3 })).toBe('3人');
+    expect(winLimitLabel({ Count: 7 })).toBe('7人');
   });
 
   it('compares a counted limit by value, since two equal counts are never the same object', (): void => {
@@ -225,24 +224,13 @@ describe('the win limit', () => {
   });
 });
 
-describe('the settings sentence', () => {
-  it('reads the size, the daub, the visibility and the ending together', (): void => {
-    expect(settingsSentence(config(), 'Full')).toBe('5×5 · 自分でタップ · 番号をすべて表示 · 最後まで続ける');
-    expect(
-      settingsSentence(
-        {
-          ...config(),
-          size: 7,
-          daub: 'Auto',
-          winLimit: {
-            Count: 3,
-          },
-        },
-        'Hidden',
-      ),
-    ).toBe('7×7 · 自動でマーク · 番号を隠す · 3人で終了');
+describe('the setting labels', () => {
+  it('names each choice by what it is, because the control it sits in already says what it decides', (): void => {
+    expect(DAUB_LABEL.Auto).toBe('自動');
     expect(DAUB_LABEL.Manual).toBe('自分でタップ');
-    expect(VISIBILITY_LABEL.LatestOnly).toBe('最新の番号だけ');
+    expect(VISIBILITY_LABEL.Full).toBe('すべて');
+    expect(VISIBILITY_LABEL.LatestOnly).toBe('最新だけ');
+    expect(VISIBILITY_LABEL.Hidden).toBe('隠す');
     expect(PHASE_LABEL.Running).toBe('プレイ中');
   });
 });
@@ -287,7 +275,7 @@ describe('winners', () => {
       ],
       cards: [card(HOST), { ...card(ME), cardIx: 1 }, { ...card(OTHER), cardIx: 2 }],
     };
-    expect(winnerGroups(finished, NAMES)).toEqual([
+    expect(winnerGroups(finished, PROFILES)).toEqual([
       {
         rank: 1,
         names: 'ホストさん、🎲ぼく',
@@ -297,7 +285,7 @@ describe('winners', () => {
   });
 
   it('has no winners to name while the game is still running', (): void => {
-    expect(winnerGroups(running(), NAMES)).toEqual([]);
+    expect(winnerGroups(running(), PROFILES)).toEqual([]);
     expect(winnerCards(running())).toEqual([]);
   });
 });

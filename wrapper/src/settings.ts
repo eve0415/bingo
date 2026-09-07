@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS: RoomSettings = {
 export const DEADLINE_HORIZONS = {
   hostAbsent: 30_000,
   roomEmpty: 5 * 60_000,
+  roomVacant: 5 * 60_000,
   revealBackstop: 24 * 60 * 60_000,
   roomGc: 7 * 24 * 60 * 60_000,
   messageRateWindow: 10_000,

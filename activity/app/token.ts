@@ -1,4 +1,4 @@
-import { array, nonEmpty, nullish, number, object, optional, pipe, strictObject, string } from 'valibot';
+import { array, boolean, nonEmpty, nullish, number, object, optional, pipe, record, strictObject, string } from 'valibot';
 
 /** Every identifier this activity carries is a non-empty string, and naming it once keeps the schemas below shallow. */
 const identifier = pipe(string(), nonEmpty());
@@ -47,9 +47,35 @@ export const sessionSchema = object({
   roomToken: identifier,
 });
 
+/** Discord reports where an instance is running, which is the only trustworthy source of the server its pictures belong to. */
+const instanceLocationSchema = object({
+  guild_id: nullish(string()),
+});
+
 /** The activity instance's live participants, which is how a claimed instance is checked against the player who claimed it. */
 export const instanceSchema = object({
   users: array(identifier),
+  location: nullish(instanceLocationSchema),
+});
+
+/** Discord names what it could not find rather than only saying it could not, and on a guild route the guild and the member wear the same status. */
+export const discordErrorSchema = object({
+  code: number(),
+});
+
+/** A guild member record, read for the one field that differs from the account: the picture set for this server alone. */
+export const guildMemberSchema = object({
+  avatar: nullish(string()),
+});
+
+/** What this activity's own picture lookup answers with, for the players of one instance who set a picture for this server. */
+export const guildAvatarsSchema = object({
+  guildId: nullish(string()),
+  /** Who the answer is about. The instance record it was read from may be seconds older than the roster that asked, and this is what says so. */
+  users: array(string()),
+  avatars: record(string(), string()),
+  /** False when Discord did not answer about someone, which is the difference between a picture that is absent and one that is merely missing. */
+  complete: boolean(),
 });
 
 /** The claims this activity signs into its own session token and reads back out of it. */

@@ -1,22 +1,9 @@
-import type { UiAction } from '../../app/room/uiState';
-import type { ClientMessage } from '@bingo/wrapper/protocol';
-
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Board } from '../../app/room/board';
 
-import { HOST, ME, NAMES, clickEveryAction, committedRoom, room, state, view } from './fixture';
-
-interface Sink {
-  sent: ClientMessage[];
-  ui: UiAction[];
-}
-
-const sink = (): Sink => ({
-  sent: [],
-  ui: [],
-});
+import { HOST, IDLE, ME, PROFILES, clickEveryAction, committedRoom, room, sink, state, view } from './fixture';
 
 const DESK = {
   width: 1200,
@@ -26,18 +13,13 @@ const PHONE = {
   width: 390,
   height: 844,
 };
-const IDLE = {
-  overlay: null,
-  panel: 'board',
-} as const;
-
 describe('the board before the first snapshot', () => {
-  it('says what the connection is doing while it waits', (): void => {
+  it('counts the launch to its last step while the socket opens', (): void => {
     const html = renderToString(
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -48,16 +30,21 @@ describe('the board before the first snapshot', () => {
         ui={IDLE}
       />,
     );
-    expect(html).toContain('部屋につないでいます');
-    expect(html).toContain('接続しています');
+    expect(html).toContain('<p data-bingo-body="">部屋につないでいます。</p>');
+    expect(html).toContain('<p aria-hidden="true" data-bingo-launch-count="">5 / 5</p>');
+    // Four waits are behind it and the fifth is the one in flight, which is what the strip has to show.
+    expect(html.match(/data-state="marked"/gu)).toHaveLength(4);
+    expect(html.match(/data-state="pending"/gu)).toHaveLength(1);
+    // Opening a socket is what the launch already says; it must not be repeated as a notice.
+    expect(html).not.toContain('接続しています');
   });
 
-  it('promises a seat when there is nothing to report', (): void => {
+  it('keeps naming the wait when the socket is open and the snapshot has not arrived', (): void => {
     const html = renderToString(
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -67,7 +54,32 @@ describe('the board before the first snapshot', () => {
         ui={IDLE}
       />,
     );
-    expect(html).toContain('まもなく参加できます。');
+    expect(html).toContain('<p data-bingo-body="">部屋につないでいます。</p>');
+    expect(html).toContain('data-bingo-launch-strip');
+  });
+
+  it('stops counting when the room refused the join rather than showing a launch still in flight', (): void => {
+    const html = renderToString(
+      <Board
+        me={ME}
+        measure={DESK}
+        profiles={PROFILES}
+        onCommand={(): void => undefined}
+        onUi={(): void => undefined}
+        state={{
+          ...state(),
+          status: 'closed',
+          view: null,
+        }}
+        ui={IDLE}
+      />,
+    );
+    expect(html).toContain('<p data-bingo-note-title="">参加できませんでした</p>');
+    expect(html).toContain('接続が切れました。アクティビティを開き直してください');
+    // Nothing on a terminal screen may go on implying the launch is still moving.
+    expect(html).not.toContain('部屋につないでいます。');
+    expect(html).not.toContain('data-bingo-launch-strip');
+    expect(html).not.toContain('data-bingo-launch-sweep');
   });
 });
 
@@ -77,7 +89,7 @@ describe('the board at the end of a game', () => {
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -106,7 +118,7 @@ describe('the board at the end of a game', () => {
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -128,7 +140,7 @@ describe('the board at the end of a game', () => {
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -156,7 +168,7 @@ describe('the board in the lobby', () => {
       <Board
         me={ME}
         measure={DESK}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -170,7 +182,7 @@ describe('the board in the lobby', () => {
         ui={IDLE}
       />,
     );
-    expect(html).toContain('<p data-bingo-hash="">—</p>');
+    expect(html).toContain('<span data-bingo-hash="">—</span>');
     expect(html).toContain('ゲーム開始時に公開されます');
   });
 });
@@ -178,7 +190,7 @@ describe('the board in the lobby', () => {
 describe('the board during a running game', () => {
   it('gives the caller the flashboard', (): void => {
     const html = renderToString(
-      <Board me={HOST} measure={DESK} names={NAMES} onCommand={(): void => undefined} onUi={(): void => undefined} state={state()} ui={IDLE} />,
+      <Board me={HOST} measure={DESK} profiles={PROFILES} onCommand={(): void => undefined} onUi={(): void => undefined} state={state()} ui={IDLE} />,
     );
     expect(html).toContain('data-bingo-flash=""');
     expect(html).toContain('>ゲームを終了</button>');
@@ -190,7 +202,7 @@ describe('the board during a running game', () => {
       <Board
         me={ME}
         measure={PHONE}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(message): void => {
           out.sent.push(message);
         }}
@@ -224,7 +236,7 @@ describe('the board during a running game', () => {
       <Board
         me={ME}
         measure={PHONE}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{
@@ -249,7 +261,7 @@ describe('the board during a running game', () => {
       />,
     );
     expect(html).toContain('番号は非公開です。カードだけを見て遊びます');
-    expect(html).toContain('<span data-bingo-status="">接続が切れました</span>');
+    expect(html).toContain('<span data-bingo-status="">· <!-- -->接続が切れました</span>');
     expect(html).toContain('接続が切れました。アクティビティを開き直してください');
     expect(html).not.toContain('>ビンゴを宣言</button>');
   });
@@ -259,7 +271,7 @@ describe('the board during a running game', () => {
       <Board
         me={ME}
         measure={PHONE}
-        names={NAMES}
+        profiles={PROFILES}
         onCommand={(): void => undefined}
         onUi={(): void => undefined}
         state={{

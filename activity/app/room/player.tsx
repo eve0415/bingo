@@ -1,7 +1,7 @@
 import type { PendingMark } from './connection';
 import type { PlayerLayout } from './layout';
 import type { Visibility } from './model';
-import type { NameLookup } from './names';
+import type { ProfileLookup } from './profiles';
 import type { UiAction, UiState } from './uiState';
 import type { CardViewDto } from '@bingo/wasm/CardViewDto';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
@@ -12,6 +12,7 @@ import { Button } from './button';
 import { CalledNumber } from './call';
 import { BingoCard } from './card';
 import { cellMessage, claimMessage } from './commands';
+import { screenEdge } from './layout';
 import { cardCells, isReach, strikeLines } from './lines';
 import { calledEntries, cardsOf, pendingFor, progressLabel, rosterMembers } from './model';
 import { RosterRow } from './roster';
@@ -31,7 +32,7 @@ const HiddenNote = (): JSX.Element => (
 export const Player = ({
   view,
   me,
-  names,
+  profiles,
   visibility,
   drawnOrder,
   pending,
@@ -44,7 +45,7 @@ export const Player = ({
 }: {
   view: RoomView;
   me: PlayerIdDto;
-  names: NameLookup;
+  profiles: ProfileLookup;
   visibility: Visibility;
   drawnOrder: readonly number[];
   pending: readonly PendingMark[];
@@ -58,8 +59,10 @@ export const Player = ({
   const { size } = view.config;
   const cards = cardsOf(view, me);
   const { latest, history } = calledEntries(drawnOrder, size);
-  const members = rosterMembers(view, me, names);
+  const members = rosterMembers(view, me, profiles);
   const manual = view.config.daub === 'Manual' && view.phase === 'Running' && !offline;
+  // A card marked by hand answers the tap rather than the draw, and a hidden call has no reel to wait for.
+  const rolling = latest === null || view.config.daub === 'Manual' || !layout.showCall ? null : latest.value;
   const beside = layout.arrangement === 'row';
   // Claim validates the card it is given, so it has to be the one holding the completed line rather than merely the first.
   const claimable = cards.find(card => card.bingo.length > 0) ?? cards[0];
@@ -93,7 +96,7 @@ export const Player = ({
   );
   return (
     <Screen
-      dense={layout.dense}
+      edge={screenEdge(layout.dense)}
       footer={
         layout.footer ? (
           <div data-bingo-actions="">
@@ -166,7 +169,7 @@ export const Player = ({
           ) : (
             cards.map(card => (
               <BingoCard
-                cells={cardCells(card, pendingFor(pending, card.cardIx, size))}
+                cells={cardCells(card, pendingFor(pending, card.cardIx, size), rolling)}
                 key={card.cardIx}
                 lines={strikeLines(card.bingo, size)}
                 maxWidth="100%"

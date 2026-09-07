@@ -462,6 +462,13 @@ export class Room extends DurableObject<Env> {
       'Lobby',
     );
     this.writeSetting(`${INITIAL_HOST_PREFIX}${gameIndex}`, host);
+    /* A past game keeps what a player checks the deal against — its config, its start roster, its seed, its commitment and its log.
+       What it does not keep is the state and the running totals derived from that log: both are read only for the game being played
+       and both rebuild themselves on a miss, so a room settles at one of each instead of carrying one engine state per game it has ever dealt.
+       That record lasts as long as the room does, which the empty-room deadline ends a few minutes after the last player disconnects.
+       Nobody can reach it after that anyway: a room is named for an activity instance, and Discord issues a new one once everyone has left. */
+    this.ctx.storage.sql.exec('DELETE FROM snapshot WHERE game_ix <> ?', gameIndex);
+    this.ctx.storage.sql.exec('DELETE FROM game_cache WHERE game_ix <> ?', gameIndex);
     const game: GameRow = {
       game_ix: gameIndex,
       config: JSON.stringify(config),
@@ -534,8 +541,18 @@ export class Room extends DurableObject<Env> {
     const attachment: unknown = socket.deserializeAttachment();
     return isVerifiedIdentity(attachment) ? attachment : null;
   }
+  /**
+   * The room's host outlives the game's. A game keeps the host it was played under — that is what its published log is attributed to —
+   * while the room may have handed itself on since, which is how a room whose host left mid-result carries on at all.
+   * Which projection a recipient gets is already decided by the room's host, so the view names that same one: otherwise the one message
+   * would tell somebody they are looking at the host's screen and that they are not the host.
+   */
   private static project(state: Snapshot, player: PlayerIdDto, host: PlayerIdDto): PlayerViewDto | HostViewDto {
-    return samePlayer(player, host) ? requireEngine(projectHost(state)) : requireEngine(projectPlayer(state, player));
+    const view = samePlayer(player, host) ? requireEngine(projectHost(state)) : requireEngine(projectPlayer(state, player));
+    return {
+      ...view,
+      host,
+    };
   }
   private snapshotMessage(state: Snapshot, game: GameRow, player: PlayerIdDto): ServerMessage {
     const info = this.roomInfo(game);
@@ -619,6 +636,10 @@ export class Room extends DurableObject<Env> {
     }
     return [...present.values()];
   }
+  // Presence is about seats, so an unseated player reads as absent while their activity is still open. Discarding a room keys on connections instead, minus the sockets that can no longer say who they belong to.
+  private vacant(excluded?: WebSocket): boolean {
+    return this.ctx.getWebSockets().every(socket => socket === excluded || Room.socketPlayer(socket) === null);
+  }
   private static departingHost(events: EventDto[], host: PlayerIdDto): boolean {
     return events.some(event => {
       const removed = eventPlayerRemoved(event);
@@ -690,6 +711,9 @@ export class Room extends DurableObject<Env> {
     if (startRoster !== null) this.publishCommitment(game, startRoster);
     const events = this.transferDepartingHost(game, result.value.events, oldHost);
     this.updateRoster(events, identity);
+    /* Absence is a fact about the host, not about a socket, so a room that has just changed hands recomputes it here rather than
+       waiting for the next connection or disconnection to notice that the new host was never on the other end of one. */
+    if (!samePlayer(this.setting<PlayerIdDto>(HOST), oldHost)) this.refreshPresence();
     this.broadcast(events);
   }
   private handleNewGame(socket: WebSocket, identity: VerifiedIdentity, config: ConfigDto | null): void {
@@ -767,6 +791,11 @@ export class Room extends DurableObject<Env> {
       this.setDeadline('room_empty', now + DEADLINE_HORIZONS.roomEmpty);
     } else {
       this.clearDeadline('room_empty');
+    }
+    if (this.vacant(excluded)) {
+      this.setDeadline('room_vacant', now + DEADLINE_HORIZONS.roomVacant);
+    } else {
+      this.clearDeadline('room_vacant');
     }
     const host = this.setting<PlayerIdDto>(HOST);
     if (present.some(player => samePlayer(player, host))) {
@@ -972,12 +1001,15 @@ export class Room extends DurableObject<Env> {
     for (const deadline of due) {
       this.clearDeadline(deadline.kind);
       if (deadline.kind === 'room_gc') {
-        if (this.presentPlayers().length > 0) {
-          this.setDeadline('room_gc', now + DEADLINE_HORIZONS.roomGc);
-        } else {
+        if (this.vacant()) {
           shouldResetRoom = true;
           break;
         }
+        this.setDeadline('room_gc', now + DEADLINE_HORIZONS.roomGc);
+      }
+      if (deadline.kind === 'room_vacant' && this.vacant()) {
+        shouldResetRoom = true;
+        break;
       }
       if (deadline.kind === 'host_absent') this.expireHostAbsence();
       if (deadline.kind === 'room_empty' && this.presentPlayers().length === 0) {
@@ -986,6 +1018,8 @@ export class Room extends DurableObject<Env> {
       if (deadline.kind === 'reveal_backstop') this.closeCurrentGame();
     }
     if (shouldResetRoom) {
+      // Nothing else records that a room's data went away, so this line is the only way to watch it happen in a running deployment.
+      console.log(JSON.stringify({ event: 'roomDiscarded', room: this.optionalSetting<string>(ROOM_ID) }));
       for (const socket of this.ctx.getWebSockets()) socket.close(1001, 'Room expired');
       await this.ctx.storage.deleteAll();
       this.createSchema();

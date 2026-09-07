@@ -1,3 +1,4 @@
+import type { Edge } from './layout';
 import type { JSX, ReactNode } from 'react';
 
 import { Button } from './button';
@@ -8,13 +9,13 @@ import { Button } from './button';
  */
 export const Screen = ({
   children,
-  dense = false,
+  edge = 'base',
   footer,
   header,
   overlay = null,
 }: {
   children: ReactNode;
-  dense?: boolean;
+  edge?: Edge;
   footer?: ReactNode;
   header?: ReactNode;
   overlay?: ReactNode;
@@ -22,7 +23,7 @@ export const Screen = ({
   // An aria-modal scrim hides what is behind it from assistive technology, so what is behind it must leave the tab order too.
   const behind = overlay === null ? undefined : true;
   return (
-    <div data-bingo-screen="" data-dense={dense}>
+    <div data-bingo-screen="" data-edge={edge}>
       <header data-bingo-header="" inert={behind}>
         {header}
       </header>
@@ -37,12 +38,18 @@ export const Screen = ({
   );
 };
 
-/** The system has no logo, so the mark is the word set in plain type; the room itself is the Discord call everyone is already in. */
-export const Wordmark = ({ players, status }: { players: number; status: string }): JSX.Element => (
+/**
+ * The system has no logo, so the mark is the word set in plain type; the room itself is the Discord call everyone is already in.
+ * The lobby has nothing to report beside the count, so the status is what a screen adds rather than what every screen carries.
+ */
+export const Wordmark = ({ players, status }: { players: number; status?: string }): JSX.Element => (
   <div data-bingo-wordmark="">
     <h1 data-bingo-title="">Bingo</h1>
-    <span data-bingo-players="">· {players}人</span>
-    <span data-bingo-status="">{status}</span>
+    {/* Keyed on the count so a change restarts the tick in place, the way the called number is replaced inside its own box. */}
+    <span data-bingo-players="" key={players}>
+      {players}人
+    </span>
+    {status === undefined ? null : <span data-bingo-status="">· {status}</span>}
   </div>
 );
 

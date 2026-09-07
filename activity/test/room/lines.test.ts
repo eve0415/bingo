@@ -29,11 +29,12 @@ describe('card geometry', () => {
 
 describe('card cells', () => {
   it('gives every cell the state the player needs to see', (): void => {
-    const cells = cardCells(marked(), [6]);
+    const cells = cardCells(marked(), [6], null);
     expect(cells[0]).toEqual({
       number: 1,
       free: false,
       state: 'winning',
+      live: false,
     });
     expect(cells[5].state).toBe('marked');
     expect(cells[6].state).toBe('pending');
@@ -42,17 +43,38 @@ describe('card cells', () => {
   });
 
   it('marks the free centre as free rather than as a number', (): void => {
-    const cells = cardCells(marked(), []);
+    const cells = cardCells(marked(), [], null);
     expect(cells[12]).toEqual({
       number: 0,
       free: true,
       state: 'marked',
+      live: false,
     });
   });
 
   it('acknowledges an in-flight unmark as plainly as an in-flight mark', (): void => {
-    const cells = cardCells(marked(), [5]);
+    const cells = cardCells(marked(), [5], null);
     expect(cells[5].state).toBe('pending');
+  });
+
+  it('points at the cell the draw has just marked, and at nothing the draw did not', (): void => {
+    const landed = cardCells(marked(), [], 6);
+    expect(landed.filter(cell => cell.live).map(cell => cell.number)).toEqual([6]);
+    // A cell that completed a line is still the number that was just called, so it waits with the rest.
+    expect(cardCells(marked(), [], 1)[0]).toMatchObject({
+      state: 'winning',
+      live: true,
+    });
+    // Nothing the draw did not land holds anything back: a number still open, and one whose mark is still in flight.
+    expect(cardCells(marked(), [], 9)[8]).toMatchObject({
+      state: 'open',
+      live: false,
+    });
+    expect(cardCells(marked(), [6], 7)[6]).toMatchObject({
+      state: 'pending',
+      live: false,
+    });
+    expect(cardCells(marked(), [], null).some(cell => cell.live)).toBe(false);
   });
 
   it('keeps a reach cell only while it is still standing in the way', (): void => {
@@ -63,6 +85,7 @@ describe('card cells', () => {
         reach: [[7, 12]],
       },
       [],
+      null,
     );
     expect(cells[7].state).toBe('reach');
     expect(cells[12].state).toBe('marked');

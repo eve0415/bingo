@@ -7,13 +7,13 @@ import { describe, expect, it } from 'vitest';
 import { commandMessage, newGameMessage } from '../../app/room/commands';
 import { Win } from '../../app/room/win';
 
-import { HOST, ME, NAMES, OTHER, card, clickEveryAction, view } from './fixture';
+import { HOST, ME, OTHER, PROFILES, card, clickEveryAction, view } from './fixture';
 
 const finished = (sent: ClientMessage[]): JSX.Element => (
   <Win
     dense={false}
     host
-    names={NAMES}
+    profiles={PROFILES}
     notice="そろっている列がありません"
     onSend={(message): void => {
       sent.push(message);
@@ -54,7 +54,7 @@ const empty = (sent: ClientMessage[]): JSX.Element => (
   <Win
     dense
     host={false}
-    names={NAMES}
+    profiles={PROFILES}
     notice={null}
     onSend={(message): void => {
       sent.push(message);
@@ -71,8 +71,8 @@ const empty = (sent: ClientMessage[]): JSX.Element => (
 describe('the result screen', () => {
   it('names the winners, strikes their lines and publishes the seed', (): void => {
     const html = renderToString(finished([]));
-    expect(html).toContain('<span data-bingo-status="">終了</span>');
-    expect(html).toContain('data-dense="false"');
+    expect(html).toContain('<span data-bingo-status="">· <!-- -->終了</span>');
+    expect(html).toContain('data-edge="base"');
     expect(html).toContain('<h2 data-bingo-result-title="">ビンゴ</h2>');
     expect(html).toContain('<p data-bingo-body="">おつかれさまでした。</p>');
     expect(html).not.toContain('さん、おつかれさまでした');
@@ -101,7 +101,7 @@ describe('the result screen', () => {
     expect(html).toContain('次のゲームで続けられます。');
     expect(html).toContain('シードはまもなく公開されます');
     expect(html).toContain('<ol data-bingo-winners=""></ol>');
-    expect(html).toContain('data-dense="true"');
+    expect(html).toContain('data-edge="tight"');
     expect(html).toContain('data-slot="toast"></div>');
     expect(html).not.toContain('>もう一回</button>');
     expect(html).toContain('<div data-bingo-actions=""></div>');

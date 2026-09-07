@@ -5,6 +5,12 @@ import { claimsSchema } from './token';
 /** The wire contract with the wrapper: a consumer states who the caller is, and the wrapper trusts it because only a service binding can reach it. */
 export const VERIFIED_IDENTITY_HEADER = 'x-bingo-verified-identity';
 
+const BEARER = 'Bearer ';
+
+/** The token an Authorization header is carrying, for the several front doors that each have to read one. */
+export const bearerToken = (authorization: string | null): string | null =>
+  authorization === null || !authorization.startsWith(BEARER) ? null : authorization.slice(BEARER.length);
+
 const encoder = new TextEncoder();
 const HASH = {
   name: 'HMAC',

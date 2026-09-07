@@ -30,16 +30,29 @@ const tokened = async (path: string, headers: Record<string, string> = {}): Prom
   });
 
 describe('activity worker', () => {
+  /**
+   * The first render of the whole app inside workerd, under instrumentation, and every module it imports is loaded to do it.
+   * It costs around five seconds where the tests after it cost one millisecond, which is the shape of a one-time cost rather than a slow test.
+   * The default timeout happens to sit on that number, so it is stated here instead of being left to chance.
+   */
   it('serves the page', async (): Promise<void> => {
     const response = await exports.default.fetch('https://activity.test/');
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toContain('text/html');
-  });
+  }, 30_000);
 
   it('serves the discord client id', async (): Promise<void> => {
     const response = await exports.default.fetch('https://activity.test/api/config');
     expect(await response.json()).toEqual({
       clientId: 'test-client-id',
+    });
+  });
+
+  it('refuses a picture lookup that carries no room token', async (): Promise<void> => {
+    const response = await exports.default.fetch('https://activity.test/api/avatars?instance=instance-1');
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: 'MissingAuthorization',
     });
   });
 

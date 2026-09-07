@@ -1,3 +1,5 @@
+import type { InferOutput } from 'valibot';
+
 import { safeParse } from 'valibot';
 
 import { configured } from './env';
@@ -19,6 +21,24 @@ export interface SessionEnvironment {
   DISCORD_BOT_TOKEN?: string;
   SESSION_HMAC_SECRET?: string;
 }
+
+/** Discord's record of one activity instance, which is what a claim to be in one is checked against. */
+export type ActivityInstance = InferOutput<typeof instanceSchema>;
+
+/**
+ * Who Discord says is actually in a claimed instance, or the refusal to send instead.
+ * Both endpoints that need it ask the same question of the same address, so they ask it here.
+ */
+export const lookupInstance = async (clientId: string, botToken: string, instanceId: string): Promise<ActivityInstance | Response> => {
+  const instance = await fetch(`${ACTIVITY_INSTANCES_URL}/${clientId}/activity-instances/${encodeURIComponent(instanceId)}`, {
+    headers: {
+      Authorization: `Bot ${botToken}`,
+    },
+  });
+  if (!instance.ok) return failure('InstanceLookupRejected', 502, `discord returned ${instance.status}`);
+  const participants = safeParse(instanceSchema, await instance.json().catch(() => null));
+  return participants.success ? participants.output : failure('InstanceLookupMalformed', 502);
+};
 
 /** The application id is public, and serving it keeps the deployment's single copy of it in the worker's environment. */
 export const activityConfig = (environment: SessionEnvironment): Response => {
@@ -70,15 +90,9 @@ export const createSession = async (environment: SessionEnvironment, request: Re
   const user = safeParse(discordUserSchema, await account.json().catch(() => null));
   if (!user.success) return failure('UserLookupMalformed', 502);
   // The claimed instance is the client's word; asking Discord who is actually in it is what makes it a claim worth honouring.
-  const instance = await fetch(`${ACTIVITY_INSTANCES_URL}/${clientId}/activity-instances/${encodeURIComponent(requested.output.instanceId)}`, {
-    headers: {
-      Authorization: `Bot ${botToken}`,
-    },
-  });
-  if (!instance.ok) return failure('InstanceLookupRejected', 502, `discord returned ${instance.status}`);
-  const participants = safeParse(instanceSchema, await instance.json().catch(() => null));
-  if (!participants.success) return failure('InstanceLookupMalformed', 502);
-  if (!participants.output.users.includes(user.output.id)) return failure('NotInInstance', 403);
+  const participants = await lookupInstance(clientId, botToken, requested.output.instanceId);
+  if (participants instanceof Response) return participants;
+  if (!participants.users.includes(user.output.id)) return failure('NotInInstance', 403);
   const displayName = user.output.global_name ?? user.output.username;
   return Response.json({
     access_token: issued.output.access_token,

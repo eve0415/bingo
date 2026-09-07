@@ -1,8 +1,10 @@
 import type { RoomState } from '../../app/room/connection';
+import type { ProfileLookup } from '../../app/room/profiles';
+import type { UiAction, UiState } from '../../app/room/uiState';
 import type { CardViewDto } from '@bingo/wasm/CardViewDto';
 import type { ConfigDto } from '@bingo/wasm/ConfigDto';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
-import type { RoomInfo, RoomView } from '@bingo/wrapper/protocol';
+import type { ClientMessage, RoomInfo, RoomView } from '@bingo/wrapper/protocol';
 import type { ReactNode } from 'react';
 
 import { playerKey } from '@bingo/wrapper/identity';
@@ -30,10 +32,22 @@ export const KEYS = {
   other: playerKey(OTHER),
 };
 
-/** The host and this player are named by the Discord instance; the third is not, so the roster falls back to a subject tail for them. */
-export const NAMES = new Map([
-  [playerKey(HOST), 'ホストさん'],
-  [playerKey(ME), '🎲ぼく'],
+/** The host and this player are reported by the Discord instance; the third is not, so the roster falls back for both their name and their picture. */
+export const PROFILES: ProfileLookup = new Map([
+  [
+    playerKey(HOST),
+    {
+      name: 'ホストさん',
+      avatar: 'https://cdn.discordapp.com/embed/avatars/2.png',
+    },
+  ],
+  [
+    playerKey(ME),
+    {
+      name: '🎲ぼく',
+      avatar: null,
+    },
+  ],
 ]);
 
 export const config = (): ConfigDto => ({
@@ -108,14 +122,43 @@ export const state = (): RoomState => ({
   drawnOrder: [1, 2],
 });
 
+/** What a screen sent and what it asked the shell to show, which is the whole of what a screen does to the world outside it. */
+export interface Sink {
+  sent: ClientMessage[];
+  ui: UiAction[];
+}
+
+export const sink = (): Sink => ({
+  sent: [],
+  ui: [],
+});
+
+/** A screen with nothing over it, which is where every screen starts. */
+export const IDLE: UiState = {
+  overlay: null,
+  panel: 'board',
+};
+
 /** No DOM event reaches these handlers, and the only member any of them touches is the one that keeps a scrim from closing. */
 export const EVENT = {
   stopPropagation: (): void => undefined,
 };
 
+/** A key nothing on these screens listens for, so every key handler is reached and none of them acts. */
+export const KEY = {
+  key: '',
+  preventDefault: (): void => undefined,
+  currentTarget: {
+    parentElement: null,
+  },
+};
+
 interface NodeProps {
   children?: ReactNode;
   onClick?: (event: typeof EVENT) => void;
+  /** A native radio is chosen rather than clicked, and the arrow keys that choose it never reach a click handler at all. */
+  onChange?: (event: typeof EVENT) => void;
+  onKeyDown?: (event: typeof KEY) => void;
 }
 
 type Rendered = (props: NodeProps) => ReactNode;
@@ -124,7 +167,7 @@ type Rendered = (props: NodeProps) => ReactNode;
 const isRendered = (value: unknown): value is Rendered => typeof value === 'function';
 
 /**
- * Walks a rendered tree and fires every click handler on it, which is the only way to reach one where there is no DOM.
+ * Walks a rendered tree and fires every click, change and key handler on it, which is the only way to reach one where there is no DOM.
  * A function element is entered through its output rather than its children, and only the element that ends up carrying the handler fires it,
  * so a control passed down as a prop is reached exactly once.
  */
@@ -136,6 +179,8 @@ export const clickEveryAction = (node: ReactNode): void => {
       return;
     }
     child.props.onClick?.(EVENT);
+    child.props.onChange?.(EVENT);
+    child.props.onKeyDown?.(KEY);
     clickEveryAction(child.props.children);
   });
 };

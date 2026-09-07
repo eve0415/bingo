@@ -1,4 +1,4 @@
-import type { NameLookup } from './names';
+import type { ProfileLookup } from './profiles';
 import type { ClientMessage, RoomView } from '@bingo/wrapper/protocol';
 import type { JSX } from 'react';
 
@@ -7,9 +7,10 @@ import { playerKey } from '@bingo/wrapper/identity';
 import { Button } from './button';
 import { BingoCard } from './card';
 import { newGameMessage } from './commands';
+import { screenEdge } from './layout';
 import { cardCells, strikeLines } from './lines';
 import { winnerCards, winnerGroups } from './model';
-import { nameOf } from './names';
+import { nameOf } from './profiles';
 import { Notice, Screen, Wordmark } from './screen';
 
 /**
@@ -18,7 +19,7 @@ import { Notice, Screen, Wordmark } from './screen';
  */
 export const Win = ({
   view,
-  names,
+  profiles,
   dense,
   host,
   players,
@@ -26,20 +27,20 @@ export const Win = ({
   onSend,
 }: {
   view: RoomView;
-  names: NameLookup;
+  profiles: ProfileLookup;
   dense: boolean;
   host: boolean;
   players: number;
   notice: string | null;
   onSend: (message: ClientMessage) => void;
 }): JSX.Element => {
-  const groups = winnerGroups(view, names);
+  const groups = winnerGroups(view, profiles);
   const cards = winnerCards(view);
   const { size } = view.config;
   const noWin = groups.length === 0;
   return (
     <Screen
-      dense={dense}
+      edge={screenEdge(dense)}
       footer={
         <>
           <Notice notice={notice} />
@@ -78,8 +79,8 @@ export const Win = ({
         <div data-bingo-result-cards="">
           {cards.map(card => (
             <div data-bingo-result-card="" key={`${playerKey(card.owner)}:${card.cardIx}`}>
-              <p data-bingo-label="">{nameOf(card.owner, names)}</p>
-              <BingoCard cells={cardCells(card, [])} flat lines={strikeLines(card.bingo, size)} maxWidth="320px" size={size} />
+              <p data-bingo-label="">{nameOf(card.owner, profiles)}</p>
+              <BingoCard cells={cardCells(card, [], null)} flat lines={strikeLines(card.bingo, size)} maxWidth="320px" settled size={size} />
             </div>
           ))}
         </div>

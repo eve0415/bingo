@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { initialOf, nameOf, seedOf } from '../../app/room/names';
+import { initialOf, nameOf, seedOf } from '../../app/room/profiles';
 
-import { HOST, ME, NAMES, OTHER } from './fixture';
+import { HOST, ME, OTHER, PROFILES } from './fixture';
 
 describe('player names', () => {
   it('prefers the name the instance reported', (): void => {
-    expect(nameOf(HOST, NAMES)).toBe('ホストさん');
+    expect(nameOf(HOST, PROFILES)).toBe('ホストさん');
   });
 
   it('falls back to a subject tail for a player the instance did not name', (): void => {
-    expect(nameOf(OTHER, NAMES)).toBe('プレイヤー 0003');
+    expect(nameOf(OTHER, PROFILES)).toBe('プレイヤー 0003');
   });
 });
 

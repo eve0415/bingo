@@ -38,7 +38,7 @@ const contents = (cell: CardCellView, index: number): JSX.Element => (
 /** A cell is a control only while this player may actually change it; anywhere else it is a number to read, never a dimmed button. */
 const Cell = ({ cell, index, onTap }: { cell: CardCellView; index: number; onTap?: (index: number) => void }): JSX.Element =>
   onTap === undefined ? (
-    <span aria-label={cellLabel(cell)} data-bingo-cell="" data-free={cell.free} data-state={cell.state} role="img">
+    <span aria-label={cellLabel(cell)} data-bingo-cell="" data-free={cell.free} data-live={cell.live} data-state={cell.state} role="img">
       {contents(cell, index)}
     </span>
   ) : (
@@ -47,6 +47,7 @@ const Cell = ({ cell, index, onTap }: { cell: CardCellView; index: number; onTap
       aria-pressed={cell.state === 'marked' || cell.state === 'winning'}
       data-bingo-cell=""
       data-free={cell.free}
+      data-live={cell.live}
       data-state={cell.state}
       onClick={() => {
         onTap(index);
@@ -97,6 +98,7 @@ export const BingoCard = ({
   lines = [],
   maxWidth = 'var(--card-max)',
   flat = false,
+  settled = false,
   onTap,
 }: {
   cells: readonly CardCellView[];
@@ -104,11 +106,15 @@ export const BingoCard = ({
   lines?: readonly StrikeLine[];
   maxWidth?: string;
   flat?: boolean;
+  /** A card the game has finished with is a record rather than a live card, so nothing on it is still being waited for. */
+  settled?: boolean;
   onTap?: (index: number) => void;
 }): JSX.Element => (
   <div
     data-bingo-card=""
     data-flat={flat}
+    data-live={cells.some(cell => cell.live)}
+    data-settled={settled}
     data-size={size}
     style={{
       maxWidth,

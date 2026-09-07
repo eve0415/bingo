@@ -19,6 +19,8 @@ const DENSE_WIDTH = 420;
 const GAP = 16;
 const CALL_HERO = 168;
 const CALL_COMPACT = 56;
+/** The host's compact call keeps the last few numbers beside the current one, and is the taller box for it. */
+const CALL_COMPACT_RECENT = 64;
 const HISTORY = TOUCH + 8;
 const RESERVED_REACH = 24;
 const RESERVED_TOAST = 48;
@@ -37,6 +39,18 @@ const gapFor = (size: number): number => GAPS.get(size) ?? 3;
 
 /** A narrow frame buys its content back out of the page gutters, whichever screen is in it. */
 export const isDense = ({ width }: Measure): boolean => width < DENSE_WIDTH;
+
+/**
+ * A frame with no room for a screen, which Discord hands out whenever the activity is shrunk to a corner of the call.
+ * Both the lobby and the host answer it the same way — the few things that still fit, and the controls that still have to work.
+ */
+export const isPip = ({ height, width }: Measure): boolean => height < 340 || (width < 400 && height < 480);
+
+/** How much room the page gutters give back. The game screens spend the least of it, because a card's cells are bought out of it. */
+export type Edge = 'tight' | 'base' | 'roomy' | 'wide';
+
+/** A game screen has only the two: it either spends the gutters or buys a card's cells out of them. */
+export const screenEdge = (dense: boolean): Edge => (dense ? 'tight' : 'base');
 
 /** Below this the cells would fall under the touch floor, which the design refuses before it refuses anything else. */
 export const cardMinWidth = (size: number): number => size * TOUCH + (size - 1) * gapFor(size) + 2 * CARD_PAD;
@@ -66,6 +80,8 @@ export interface HostLayout {
   readonly columns: Columns;
   readonly callVariant: CallVariant;
   readonly cardMax: number;
+  /** Too small for a flashboard, a roster and a card. The draw still has to work, so it is the draw the pip keeps. */
+  readonly pip: boolean;
 }
 
 export interface PlayerNeeds {
@@ -142,12 +158,14 @@ export const playerLayout = ({ width, height }: Measure, size: number, needs: Pl
 
 /** The host reads a flashboard, a roster and their own card; how many of the three sit side by side is all the width decides. */
 /** What a stacked switcher spends before the panel gets anything: header, call, notice, tabs, the pinned draw controls and the page edges. */
-const HOST_CHROME = HEADER + CALL_COMPACT + RESERVED_TOAST + TOUCH + FOOTER + 2 * EDGE;
+const HOST_CHROME = HEADER + CALL_COMPACT_RECENT + RESERVED_TOAST + TOUCH + FOOTER + 2 * EDGE;
 /** Five rows of a 15-wide flashboard, which is the tallest thing a panel has to hold. */
 const PANEL_MIN = 140;
 
 export const hostLayout = ({ width, height }: Measure, size: number): HostLayout => {
   const clamp = (available: number): number => Math.max(cardMinWidth(size), Math.min(CARD_MAX, available));
+  // A pip frame is short by definition, so it is always the short-frame arrangement that has to answer for it.
+  const pip = isPip({ width, height });
   if (width < 680 || height < 560) {
     // Stacking the call above the switcher costs more height than a short frame has, so there the call moves beside it instead.
     const beside = height - HOST_CHROME < PANEL_MIN && width >= CALL_COLUMN * 2;
@@ -155,6 +173,7 @@ export const hostLayout = ({ width, height }: Measure, size: number): HostLayout
       columns: beside ? 'beside' : 'one',
       callVariant: 'compact',
       cardMax: clamp(Math.min(width - 2 * EDGE - (beside ? CALL_COLUMN + EDGE : 0), height)),
+      pip,
     };
   }
   if (width >= 1100) {
@@ -162,14 +181,46 @@ export const hostLayout = ({ width, height }: Measure, size: number): HostLayout
       columns: 'desk',
       callVariant: 'hero',
       cardMax: clamp(420),
+      pip: false,
     };
   }
   return {
     columns: 'split',
     callVariant: 'hero',
     cardMax: clamp(width / 2 - 3 * EDGE),
+    pip: false,
   };
 };
 
-/** The lobby has no card to protect, so it splits into two columns as soon as there is width for two readable ones. */
-export const lobbyColumns = ({ width }: Measure): Columns => (width >= 900 ? 'split' : 'one');
+export interface LobbyLayout {
+  readonly columns: Columns;
+  /**
+   * A frame too short for a roster and a settings panel at once. The lobby answers the only two questions it can in that space —
+   * who is here and what is about to be played — rather than scrolling a screen nobody came to read.
+   */
+  readonly pip: boolean;
+  /** Whether a settings row has the width to put its caption beside its control rather than above it. */
+  readonly rows: 'beside' | 'stacked';
+  readonly edge: Edge;
+}
+
+/** A lobby narrow enough that a game screen would go tight only gives back what the game screen keeps. */
+const lobbyEdge = (dense: boolean, wide: boolean): Edge => {
+  if (dense) return 'base';
+  return wide ? 'wide' : 'roomy';
+};
+
+/**
+ * The lobby has no card to protect, so it splits into two columns as soon as there is width for two readable ones,
+ * and it spends the gutters a game screen has to save. Between the split and a desk the settings column is the narrower half,
+ * which is why its rows stack again there and only widen back out past 1100.
+ */
+export const lobbyLayout = ({ width, height }: Measure): LobbyLayout => {
+  const wide = width >= 900;
+  return {
+    columns: wide ? 'split' : 'one',
+    pip: isPip({ width, height }),
+    rows: width >= 560 && (!wide || width >= 1100) ? 'beside' : 'stacked',
+    edge: lobbyEdge(isDense({ width, height }), wide),
+  };
+};

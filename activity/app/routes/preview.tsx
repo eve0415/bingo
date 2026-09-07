@@ -4,7 +4,7 @@ import type { JSX } from 'react';
 import { ClientOnly, createFileRoute } from '@tanstack/react-router';
 import { useEffect, useReducer, useSyncExternalStore } from 'react';
 
-import { NAMES, SCENES, SIZES, isScene } from '../preview/fixtures';
+import { PROFILES, SCENES, SIZES, isScene } from '../preview/fixtures';
 import { Board } from '../room/board';
 import { Screen } from '../room/screen';
 import { initialUi, uiReducer } from '../room/uiState';
@@ -51,12 +51,13 @@ const Fixture = ({ scene, size }: { scene: Scene; size: number }): JSX.Element =
       document.removeEventListener('keydown', onKey);
     };
   }, []);
-  const open = ui.overlay !== null;
+  /* Follows the overlay rather than whether there is one: a row menu carries no surface, and the dialogue it raises still has to be focused. */
+  const { overlay } = ui;
   useEffect((): void => {
-    if (!open) return;
+    if (overlay === null) return;
     const surface = document.querySelector('[data-bingo-surface]');
     if (surface instanceof HTMLElement) surface.focus();
-  }, [open]);
+  }, [overlay]);
   const width = useSyncExternalStore(
     subscribe,
     () => globalThis.innerWidth,
@@ -75,7 +76,7 @@ const Fixture = ({ scene, size }: { scene: Scene; size: number }): JSX.Element =
         width,
         height,
       }}
-      names={NAMES}
+      profiles={PROFILES}
       onCommand={noop}
       onUi={onUi}
       state={fixture.state}

@@ -163,10 +163,19 @@ export default defineConfig({
       },
     },
     {
+      files: ['activity/app/discord.ts', 'activity/app/routes/index.tsx'],
+      rules: {
+        // A scope the client withheld and a command it refused both reach the activity as a courtesy path that must not disturb the room, so the browser console is the only place a launch can report either.
+        'no-console': 'off',
+      },
+    },
+    {
       files: ['wrapper/src/room.ts'],
       rules: {
         // The only unsafe returns are typed decoders for values written by this Worker or validated by Rust.
         'typescript/no-unsafe-return': 'off',
+        // Discarding a room leaves nothing behind to query afterwards, so the runtime log is the only account a deployment can give of it.
+        'no-console': 'off',
       },
     },
   ],

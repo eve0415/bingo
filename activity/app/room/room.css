@@ -249,10 +249,57 @@ button[data-bingo-cell][data-state='winning'] {
   border: var(--stroke-reach) dashed var(--reach-ink);
   background: var(--reach);
   font-weight: 700;
+  animation: reach-breathe 1.6s ease-in-out infinite;
+}
+
+/* The open cell that would finish the line is the one the player is watching, so its dashes breathe.
+   The dash thins toward the fill and never reaches it: reach is a shape before it is a colour, and a cell whose edge disappears reads as daubed. Pending's blot floors at 0.55 opacity for the same reason. */
+@keyframes reach-breathe {
+  0%,
+  100% {
+    border-color: var(--reach-ink);
+  }
+  50% {
+    border-color: color-mix(in oklch, var(--reach), var(--reach-ink) 55%);
+  }
+}
+
+/* A finished card keeps its reach edge as a record of how close the player got, but nothing on it is still being waited for, so the motion stops. */
+[data-bingo-card][data-settled='true'] [data-bingo-cell][data-state='reach'] {
+  animation: none;
+}
+
+/* The state rule outranks a bare cell selector, so the override repeats it in full or reduced motion loses the cascade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-cell][data-state='reach'] {
+    animation: none;
+  }
 }
 
 [data-bingo-cell][data-state='winning'] {
   border: var(--stroke-win) solid var(--win);
+}
+
+/* A line that closes on the number being rolled would edge the winning cell before anyone had read it, so the edge waits with the daub. */
+[data-bingo-cell][data-live='true'][data-state='winning'] {
+  animation: win-wait var(--dur-slow) steps(1, end);
+}
+
+@keyframes win-wait {
+  from {
+    border-width: var(--stroke-cell);
+    border-color: var(--paper-line);
+  }
+  to {
+    border-width: var(--stroke-win);
+    border-color: var(--win);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-cell][data-live='true'][data-state='winning'] {
+    animation: none;
+  }
 }
 
 [data-bingo-num] {
@@ -282,6 +329,33 @@ button[data-bingo-cell][data-state='winning'] {
   animation: pending-breathe 1.6s ease-in-out infinite;
 }
 
+/* The card must not print the answer the reel is still rolling: the cell the draw has just marked waits the roll out, then lands on its own curve. */
+[data-bingo-cell][data-live='true'] [data-bingo-blot] {
+  animation: daub-in var(--dur) var(--ease-daub) var(--dur-slow) backwards;
+}
+
+/* The numeral turns to ink-on-daub the moment it is marked, which is the same tell a beat early, so it holds too. */
+[data-bingo-cell][data-live='true'] [data-bingo-num] {
+  animation: daub-wait var(--dur-slow) steps(1, end);
+}
+
+@keyframes daub-wait {
+  from {
+    color: var(--ink);
+  }
+  to {
+    color: var(--daub-ink);
+  }
+}
+
+/* The live rule outranks the bare blot selector, so the override repeats it in full or reduced motion loses the cascade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-cell][data-live='true'] [data-bingo-blot],
+  [data-bingo-cell][data-live='true'] [data-bingo-num] {
+    animation: none;
+  }
+}
+
 [data-bingo-strike] {
   position: absolute;
   z-index: 2;
@@ -289,6 +363,30 @@ button[data-bingo-cell][data-state='winning'] {
   background: var(--win);
   opacity: 0.92;
   pointer-events: none;
+  animation: strike-in var(--dur-slow) var(--ease-out);
+}
+
+/* The bar is the whole celebration, so it cannot arrive before the number that earned it: on a card still holding a called number it waits, kept clipped out of sight by strike-in's own first frame. */
+[data-bingo-card][data-live='true'] [data-bingo-strike] {
+  animation: strike-in var(--dur-slow) var(--ease-out) var(--dur-slow) backwards;
+}
+
+/* Reveal the bar without changing the card's row, column, or diagonal geometry. */
+@keyframes strike-in {
+  from {
+    clip-path: inset(0 100% 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+/* The card rule outranks the bare bar selector, so the override repeats it in full or reduced motion loses the cascade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-strike],
+  [data-bingo-card][data-live='true'] [data-bingo-strike] {
+    animation: none;
+  }
 }
 
 /* The called number -------------------------------------------------------- */
@@ -357,6 +455,45 @@ button[data-bingo-cell][data-state='winning'] {
   justify-self: end;
 }
 
+/* With the last few numbers in it, the box stacks its two captions into one column and gives the rest of the row to the call and its tail.
+   The taller box is the host's alone, and `HOST_CHROME` in layout.ts is the height budget that knows it. */
+[data-bingo-call][data-variant='compact'] [data-bingo-call-box]:has([data-bingo-recent]) {
+  height: var(--reserved-call-recent);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'label value recent'
+    'progress value recent';
+  row-gap: 2px;
+}
+
+[data-bingo-call][data-variant='compact'] [data-bingo-call-box]:has([data-bingo-recent]) [data-bingo-call-progress] {
+  justify-self: start;
+}
+
+[data-bingo-recent] {
+  grid-area: recent;
+  display: flex;
+  gap: var(--sp-1);
+  justify-self: end;
+}
+
+[data-bingo-recent-item] {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--sp-2);
+  box-sizing: border-box;
+  border-radius: var(--sp-2);
+  background: var(--ground-3);
+  color: var(--on-ground-2);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+}
+
 [data-bingo-call-value] {
   display: flex;
   align-items: baseline;
@@ -374,6 +511,75 @@ button[data-bingo-cell][data-state='winning'] {
   align-items: baseline;
   gap: var(--sp-2);
   animation: call-in var(--dur) var(--ease-out);
+}
+
+/* Reels overlay the real number, which reserves its final width throughout the draw. */
+[data-bingo-call-result] {
+  animation: call-reveal var(--dur-slow) steps(1, end);
+}
+
+[data-bingo-reel] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+  animation: call-conceal var(--dur-slow) steps(1, jump-end) forwards;
+}
+
+[data-bingo-reel-window] {
+  height: 1em;
+  overflow: hidden;
+}
+
+[data-bingo-reel-track] {
+  display: flex;
+  flex-direction: column;
+  transform: translateY(-80%);
+  animation: call-roll var(--dur-slow) steps(4, end);
+}
+
+[data-bingo-reel-track] > span {
+  height: 1em;
+}
+
+@keyframes call-roll {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-80%);
+  }
+}
+
+@keyframes call-reveal {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The reel covers the number for the whole roll and then leaves in one step.
+   It must not be `call-reveal` played in reverse: reverse negates progress before the step function runs, so the single step fires at the first frame and the reel is hidden for the entire roll. */
+@keyframes call-conceal {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-call-result],
+  [data-bingo-reel-track] {
+    animation: none;
+  }
+
+  [data-bingo-reel] {
+    display: none;
+  }
 }
 
 [data-bingo-call][data-variant='compact'] [data-bingo-call-swap] {
@@ -417,6 +623,17 @@ button[data-bingo-cell][data-state='winning'] {
   scrollbar-width: none;
 }
 
+/* The row is reserved from the first draw, so before there is anything in it it says what will be. */
+[data-bingo-history-idle] {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: var(--on-ground-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 [data-bingo-history-item] {
   flex: 0 0 auto;
   display: grid;
@@ -432,6 +649,11 @@ button[data-bingo-cell][data-state='winning'] {
   font-weight: 600;
 }
 
+/* Only the newest entry arrives. The strip is newest-first, so that is its first child, and a whole strip does not replay itself on the first paint. */
+[data-bingo-history-item]:first-child {
+  animation: history-in var(--dur) var(--ease-out);
+}
+
 [data-bingo-history-item] [data-bingo-num] {
   font-size: var(--num-history);
   color: var(--on-ground-2);
@@ -441,6 +663,25 @@ button[data-bingo-cell][data-state='winning'] {
   font-size: calc(var(--num-history) * 0.6);
   margin-right: 2px;
   color: var(--on-ground-2);
+}
+
+/* The strip is newest first, so the number that has just stopped being the call arrives at the head of it rather than appearing there. */
+@keyframes history-in {
+  from {
+    transform: translateX(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+/* The entrance is on :first-child, so the override repeats that selector or it loses the cascade to it. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-history-item]:first-child {
+    animation: none;
+  }
 }
 
 /* Roster ------------------------------------------------------------------- */
@@ -468,6 +709,40 @@ button[data-bingo-roster-row] {
 
 [data-bingo-roster-row][data-you='true'] {
   background: var(--ground-2);
+}
+
+[data-bingo-roster-row][data-roster='lobby'] {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+/* One line, so the name, the marker for you and the host's title sit on one baseline instead of stacking. */
+[data-bingo-roster-identity] {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+}
+
+/* Names are people's own, so they are set in the platform's Japanese face rather than in the condensed Latin one. */
+[data-bingo-roster-person] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-body);
+}
+
+[data-bingo-roster-role] {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--on-ground-2);
+}
+
+[data-bingo-roster-identity] [data-bingo-roster-you] {
+  flex: none;
 }
 
 [data-bingo-avatar][data-seed='0'] {
@@ -500,6 +775,23 @@ button[data-bingo-roster-row] {
   color: oklch(98% 0 0);
   font-weight: 700;
   font-size: var(--text-md);
+}
+
+/*
+ * The picture covers the drawn initial rather than replacing it, so one Discord refuses to serve uncovers the initial
+ * again. That works only while this rule paints nothing of its own: a background or a border here would turn a picture
+ * that failed to load into a blank disc instead.
+ */
+[data-bingo-avatar-image] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  object-fit: cover;
+  /* A roster row is a control on the host's screen, and an image inside one is otherwise draggable and long-pressable. */
+  pointer-events: none;
+  -webkit-touch-callout: none;
 }
 
 [data-bingo-avatar-host] {
@@ -538,12 +830,41 @@ button[data-bingo-roster-row] {
 }
 
 [data-bingo-roster-marks] {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
   min-height: 1.3em;
   font-size: var(--text-sm);
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
   line-height: var(--lh-ui);
   color: var(--on-ground-2);
+}
+
+/* How far along a card is, said as a length as well as a count, so a host scanning the roster reads it without reading it. */
+[data-bingo-roster-bar] {
+  flex: none;
+  width: 56px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ground-3);
+  overflow: hidden;
+}
+
+[data-bingo-roster-fill] {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--on-ground-2);
+  transition: inline-size var(--dur) var(--ease-out);
+}
+
+[data-bingo-roster-bar][data-status='reach'] [data-bingo-roster-fill] {
+  background: var(--reach);
+}
+
+[data-bingo-roster-bar][data-status='bingo'] [data-bingo-roster-fill] {
+  background: var(--win);
 }
 
 /* Screens ------------------------------------------------------------------ */
@@ -575,12 +896,12 @@ button[data-bingo-roster-row] {
 }
 
 [data-bingo-header] {
+  grid-row: 1;
   display: grid;
   grid-auto-flow: column;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  height: 48px;
-  padding: 0 var(--sp-4);
+  height: 56px;
   gap: var(--sp-2);
 }
 
@@ -589,20 +910,44 @@ button[data-bingo-roster-row] {
 }
 
 [data-bingo-main] {
+  grid-row: 2;
   min-height: 0;
-  padding: 0 var(--sp-4);
+  padding: 0 var(--edge);
 }
 
-/* A narrow frame buys the card its full-pitch cells back out of the page gutters. */
-[data-bingo-screen][data-dense='true'] [data-bingo-main],
-[data-bingo-screen][data-dense='true'] [data-bingo-header],
-[data-bingo-screen][data-dense='true'] [data-bingo-footer] {
-  padding-left: var(--sp-2);
-  padding-right: var(--sp-2);
+/* A narrow frame buys the card its full-pitch cells back out of the page gutters; a lobby, with no card to protect, spends them. */
+[data-bingo-screen] {
+  --edge: var(--sp-4);
+}
+
+[data-bingo-screen][data-edge='tight'] {
+  --edge: var(--sp-2);
+}
+
+[data-bingo-screen][data-edge='roomy'] {
+  --edge: var(--sp-6);
+}
+
+[data-bingo-screen][data-edge='wide'] {
+  --edge: var(--sp-8);
+}
+
+[data-bingo-header] {
+  padding-left: var(--edge);
+  padding-right: var(--edge);
 }
 
 [data-bingo-footer] {
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  grid-row: 3;
+  padding: var(--sp-3) var(--edge) var(--sp-4);
+}
+
+/* On a desk the actions would otherwise run the full width of a room that is mostly empty ground. */
+[data-bingo-screen][data-edge='wide'] [data-bingo-footer] {
+  max-width: calc(720px + 2 * var(--edge));
+  width: 100%;
+  margin-inline: auto;
+  box-sizing: border-box;
 }
 
 [data-bingo-footer]:empty {
@@ -632,6 +977,22 @@ button[data-bingo-roster-row] {
   color: var(--on-ground-2);
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
+}
+
+/* Someone arriving is the lobby's news, so the count says so rather than changing between two frames nobody watched. */
+[data-bingo-players] {
+  animation: count-tick var(--dur) var(--ease-out) both;
+}
+
+@keyframes count-tick {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 [data-bingo-status] {
@@ -739,17 +1100,6 @@ button[data-bingo-roster-row] {
   min-width: 0;
 }
 
-[data-bingo-section] {
-  display: grid;
-  gap: var(--sp-2);
-}
-
-[data-bingo-options] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-
 [data-bingo-roster] {
   display: grid;
 }
@@ -759,6 +1109,602 @@ button[data-bingo-roster-row] {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
+}
+
+/* The lobby roster fills in rather than appearing all at once, which is what makes a room look like people arriving.
+   The line is the lobby's own element, so a game roster remounting behind a tab never replays this. */
+[data-bingo-roster-line] {
+  animation: row-in var(--dur) var(--ease-out) both;
+}
+
+[data-bingo-roster-line]:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+[data-bingo-roster-line]:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+[data-bingo-roster-line]:nth-child(n + 4) {
+  animation-delay: 120ms;
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The delays are their own rather than the token scale's, so reduced motion has to stop them by name. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-roster-line] {
+    animation: none;
+  }
+}
+
+/* Who is running the room is the one thing a lobby row says beyond a name, so the badge arrives rather than being there. */
+[data-bingo-roster-row][data-roster='lobby'] [data-bingo-avatar-host] {
+  animation: badge-in var(--dur-slow) var(--ease-daub) both;
+}
+
+@keyframes badge-in {
+  from {
+    transform: scale(0);
+  }
+
+  70% {
+    transform: scale(1.25);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+/* The lobby ---------------------------------------------------------------- */
+
+[data-bingo-lobby] {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-5);
+  align-content: start;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: var(--sp-3) 0 var(--sp-4);
+}
+
+/* The roster is the shorter half and the settings are the taller one, so the split is not down the middle. */
+[data-bingo-lobby][data-columns='split'] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: var(--sp-8);
+}
+
+[data-bingo-lobby] [data-bingo-column] {
+  gap: var(--sp-2);
+}
+
+[data-bingo-lobby] [data-bingo-roster] {
+  gap: 2px;
+}
+
+[data-bingo-head] {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-1);
+  min-height: 24px;
+}
+
+/* The heading is a label: it takes its own line before it breaks in the middle of a word. */
+[data-bingo-head] > :first-child {
+  white-space: nowrap;
+}
+
+/* What the roster has to report, said in the same glyphs the chips wear so it reads without colour. */
+[data-bingo-tallies] {
+  display: flex;
+  flex: none;
+  gap: var(--sp-3);
+  font-size: var(--text-sm);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  color: var(--on-ground-2);
+  white-space: nowrap;
+}
+
+[data-bingo-tally][data-status='reach'] > span {
+  color: var(--reach);
+}
+
+[data-bingo-tally][data-status='bingo'] > span {
+  color: var(--win);
+}
+
+/* The heading over the host's card is the card's own width, so the reach line lands over the paper rather than out beside it. */
+[data-bingo-own] {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: start;
+  justify-self: center;
+  width: 100%;
+  min-width: 0;
+}
+
+[data-bingo-count] {
+  flex: none;
+  font-size: var(--text-sm);
+  color: var(--on-ground-2);
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Nobody has arrived yet. The row is the shape the first person will take, drawn as an outline rather than as a sentence where the roster should be. */
+[data-bingo-roster-empty] {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--reserved-row);
+  padding: 0 var(--sp-3);
+  box-sizing: border-box;
+  border-radius: var(--r-btn);
+  border: var(--stroke-cell) dashed var(--ground-line);
+}
+
+[data-bingo-empty-avatar] {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: var(--stroke-cell) dashed var(--ground-line);
+}
+
+[data-bingo-empty-body] {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--on-ground-2);
+  text-wrap: pretty;
+}
+
+/* Settings ------------------------------------------------------------------ */
+
+[data-bingo-settings] {
+  display: grid;
+  border-radius: var(--r-hero);
+  background: var(--ground-2);
+  padding: var(--sp-1) var(--sp-5);
+}
+
+[data-bingo-setting] {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-2);
+  align-items: start;
+  padding: 14px 0;
+  border-top: 1px solid var(--ground);
+}
+
+[data-bingo-setting]:first-child {
+  border-top: 0;
+}
+
+[data-bingo-settings][data-rows='beside'] [data-bingo-setting] {
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+
+[data-bingo-settings][data-rows='beside'] [data-bingo-setting-name] {
+  padding-top: 10px;
+}
+
+[data-bingo-setting-name] {
+  display: grid;
+  gap: 2px;
+}
+
+[data-bingo-setting-title] {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  white-space: nowrap;
+}
+
+[data-bingo-setting-sub] {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--on-ground-2);
+}
+
+[data-bingo-setting-control] {
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The options are one control, not four buttons: they share a track, and the choice is the filled one. */
+[data-bingo-choices] {
+  --choice-min: 68px;
+
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--choice-min), 1fr));
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r-btn);
+  background: var(--ground);
+  box-sizing: border-box;
+}
+
+/* Each track is only as wide as its own longest label needs, so a two-option row does not inherit a four-option row's pitch. */
+[data-bingo-choices][data-group='size'] {
+  --choice-min: 60px;
+}
+
+[data-bingo-choices][data-group='daub'] {
+  --choice-min: 96px;
+}
+
+/* The control is the label; the radio inside it is what the keyboard and the screen reader are actually driving.
+   It is taken out of the flow rather than stretched over the label, because a transparent overlay would sit between the words and their background
+   and leave anything measuring contrast unable to say what the words are written on. Pressing the label reaches it either way. */
+[data-bingo-choice-input] {
+  appearance: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+
+[data-bingo-choice] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: var(--touch-min);
+  padding: 0 var(--sp-1);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--on-ground-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+  /* The selection moves between options rather than blinking off one and on to another, which is why colour is what is animated here. */
+  transition:
+    background 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+[data-bingo-choice][data-on='true'] {
+  background: var(--on-ground);
+  color: var(--ink);
+}
+
+[data-bingo-choice]:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) {
+  [data-bingo-choice][data-on='false']:hover {
+    background: var(--ground-3);
+    color: var(--on-ground);
+  }
+}
+
+[data-bingo-choice-label] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The board an option deals, at a glance: the field of dots is the card it would print. */
+[data-bingo-dots] {
+  display: grid;
+  gap: 2px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+[data-bingo-dots] > span {
+  background: currentcolor;
+  border-radius: 1px;
+  opacity: 0.9;
+}
+
+[data-bingo-dots][data-size='3'] {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+[data-bingo-dots][data-size='5'] {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+[data-bingo-dots][data-size='7'] {
+  grid-template-columns: repeat(7, 1fr);
+}
+
+[data-bingo-dots][data-size='9'] {
+  grid-template-columns: repeat(9, 1fr);
+}
+
+/* A denser field of smaller dots, so a 9×9 reads as more squares rather than as a bigger block. */
+[data-bingo-dots][data-size='7'],
+[data-bingo-dots][data-size='9'] {
+  gap: 1px;
+}
+
+[data-bingo-dots][data-size='7'] > span,
+[data-bingo-dots][data-size='9'] > span {
+  border-radius: 0.5px;
+}
+
+/* A player cannot change any of this, so the choice is reported at the height the control would have taken. */
+[data-bingo-setting-value] {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  height: var(--touch-min);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+/* The line changes on every tap, so it is replaced inside space already reserved for the longest of them. */
+[data-bingo-setting-hint] {
+  margin: 0;
+  min-height: 20px;
+  padding: 0 var(--sp-1);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--on-ground-2);
+  text-wrap: pretty;
+  animation: call-in var(--dur) var(--ease-out);
+}
+
+[data-bingo-commit] {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-1) 0;
+}
+
+[data-bingo-commit] [data-bingo-fine] {
+  line-height: 1.7;
+}
+
+/* The row's own menu ------------------------------------------------------- */
+
+[data-bingo-menu-anchor] {
+  position: relative;
+  flex: none;
+}
+
+[data-bingo-menu-toggle] {
+  display: grid;
+  place-items: center;
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--on-ground-2);
+  font-family: var(--font-ui);
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+[data-bingo-menu-toggle][data-on='true'] {
+  background: var(--ground-2);
+  color: var(--on-ground);
+}
+
+[data-bingo-menu-toggle]:active {
+  transform: scale(0.97);
+}
+
+@media (hover: hover) {
+  [data-bingo-menu-toggle]:hover {
+    background: var(--ground-2);
+    color: var(--on-ground);
+  }
+}
+
+/*
+ * What closes the menu when the next tap lands anywhere else. It is a real control with a name rather than a document listener,
+ * so it is reachable by whatever the person is already using to point at the screen.
+ */
+[data-bingo-menu-dismiss] {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+[data-bingo-menu] {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  z-index: 5;
+  min-width: 180px;
+  display: grid;
+  padding: 6px;
+  border-radius: var(--r-card);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow-card);
+  animation: menu-in var(--dur-fast) var(--ease-out);
+}
+
+[data-bingo-menu-item] {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--touch-min);
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+[data-bingo-menu-item][data-danger='true'] {
+  color: var(--danger);
+}
+
+@media (hover: hover) {
+  [data-bingo-menu-item]:hover {
+    background: var(--paper-2);
+  }
+}
+
+[data-bingo-menu-glyph] {
+  width: 11px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--ink-2);
+}
+
+[data-bingo-menu-item][data-danger='true'] [data-bingo-menu-glyph] {
+  font-size: var(--text-sm);
+  color: inherit;
+}
+
+/* Too short for both halves: who is here and what is about to be played, and nothing that would need scrolling to read. */
+/* Discord has shrunk the activity to a corner of the call.
+   The host keeps the number, who is close, and the draw; everything else is a panel there is no room to read. */
+[data-bingo-pip-host] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-4);
+  height: 100%;
+  min-height: 0;
+}
+
+[data-bingo-pip-call] {
+  display: grid;
+  gap: var(--sp-2);
+  align-content: center;
+  min-width: 0;
+}
+
+/* Stacked, the primary action takes the top of the column and the two share its width. */
+[data-bingo-actions][data-stack='true'] {
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+[data-bingo-pip] {
+  display: grid;
+  height: 100%;
+  align-content: center;
+  gap: 6px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+[data-bingo-pip-title] {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-bingo-pip-summary] {
+  margin: 0;
+  font-size: 13px;
+  color: var(--on-ground-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Where a real row keeps its menu, the outline keeps the room for one. */
+[data-bingo-menu-spacer] {
+  width: var(--touch-min);
+  height: var(--touch-min);
+}
+
+[data-bingo-waiting] {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--on-ground-2);
+  white-space: nowrap;
+}
+
+/* Nothing on a lobby moves while it waits, so a screen that has stopped and a screen that is waiting look the same. The dot is the difference.
+   It is not the accent: no number has been called yet, and the accent is what a called number wears. */
+[data-bingo-waiting-dot] {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-chip);
+  background: var(--on-ground-2);
+  animation: waiting-breathe 1.8s var(--ease-out) infinite;
+}
+
+@keyframes waiting-breathe {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The duration is its own rather than the token scale's, so reduced motion has to stop it by name. */
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-waiting-dot] {
+    animation: none;
+  }
 }
 
 /* Playing — the one screen that must never scroll and never shift ---------- */
@@ -905,15 +1851,26 @@ button[data-bingo-roster-row] {
 
 /* The host's flashboard ---------------------------------------------------- */
 
+/* The board is a printed sheet the caller crosses off, so it sits on one, and an uncalled cell is paper rather than a tile. */
+[data-bingo-flash-block] {
+  border-radius: 14px;
+  background: var(--ground-2);
+  padding: var(--sp-3);
+}
+
+[data-bingo-screen][data-edge='tight'] [data-bingo-flash-block] {
+  padding: var(--sp-2);
+}
+
 [data-bingo-flash] {
   display: grid;
-  gap: 3px;
+  gap: var(--sp-1);
 }
 
 [data-bingo-flash-row] {
   display: grid;
   grid-template-columns: 20px repeat(15, minmax(0, 1fr));
-  gap: 3px;
+  gap: var(--sp-1);
   align-items: center;
 }
 
@@ -939,8 +1896,8 @@ button[data-bingo-roster-row] {
   display: grid;
   place-items: center;
   min-width: 0;
-  border-radius: 4px;
-  background: var(--ground-2);
+  border-radius: 5px;
+  background: var(--ground);
   /* A number nobody has called yet is still a number somebody has to read. */
   color: var(--on-ground-2);
   font-family: var(--font-num);
@@ -957,10 +1914,51 @@ button[data-bingo-roster-row] {
   font-weight: 700;
 }
 
+/* The board must not answer the draw before the number has been read out: the cell holds the look of a number nobody has called for as long as the reel is still rolling, and only then lands. */
 [data-bingo-flash-cell][data-live='true'] {
   background: var(--live);
   color: var(--live-ink);
   font-weight: 700;
+  box-shadow:
+    0 0 0 2px var(--ground-2),
+    0 0 0 3.5px var(--live);
+  animation:
+    flash-wait var(--dur-slow) steps(1, end),
+    flash-live var(--dur) var(--ease-daub) var(--dur-slow);
+}
+
+/* One step at the end, so the uncalled look is what the whole roll shows and the live colour arrives in a single frame rather than fading up through it. */
+@keyframes flash-wait {
+  from {
+    background: var(--ground);
+    color: var(--on-ground-2);
+    font-weight: 500;
+    box-shadow: none;
+  }
+  to {
+    background: var(--live);
+    color: var(--live-ink);
+    font-weight: 700;
+    box-shadow:
+      0 0 0 2px var(--ground-2),
+      0 0 0 3.5px var(--live);
+  }
+}
+
+/* The board answers the draw: the cell the caller has just read grows into place. A flashboard cell is a fifth of a card cell, so the daub curve's overshoot is sub-pixel here and it is the entrance that carries the motion. */
+@keyframes flash-live {
+  from {
+    transform: scale(0.86);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-flash-cell][data-live='true'] {
+    animation: none;
+  }
 }
 
 [data-bingo-sitting-out] {
@@ -986,6 +1984,7 @@ button[data-bingo-roster-row] {
   padding: var(--sp-4);
   /* A solid scrim, never a blur: the ground is the app's own and does not borrow contrast from the frame. */
   background: oklch(22% 0.03 255 / 0.8);
+  animation: scrim-in var(--dur-fast) var(--ease-out);
 }
 
 [data-bingo-surface='sheet'] {
@@ -998,6 +1997,7 @@ button[data-bingo-roster-row] {
   padding: var(--sp-4) var(--sp-2) var(--sp-6);
   border-radius: var(--r-hero) var(--r-hero) 0 0;
   background: var(--ground-2);
+  animation: sheet-in var(--dur) var(--ease-out);
 }
 
 [data-bingo-sheet-head],
@@ -1023,10 +2023,54 @@ button[data-bingo-roster-row] {
   background: var(--paper);
   color: var(--ink);
   box-shadow: var(--shadow-card);
+  animation: dialog-in var(--dur) var(--ease-out);
+}
+/* A card decides the width; a question is only ever a sentence and two buttons, so it does not take a card's room. */
+[data-bingo-surface='dialog']:not(:has([data-bingo-card])) {
+  max-width: 360px;
 }
 
 [data-bingo-surface='dialog'] [data-bingo-body] {
   color: var(--ink-2);
+}
+
+/* An overlay takes over the screen, so it arrives rather than replacing what was there between one frame and the next. */
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* The sheet comes up off the edge it is anchored to; the dialog is centred, so it comes up out of its own middle. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(12px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-scrim],
+  [data-bingo-surface='sheet'],
+  [data-bingo-surface='dialog'] {
+    animation: none;
+  }
 }
 
 [data-bingo-dialog-title] {
@@ -1065,11 +2109,13 @@ button[data-bingo-roster-row] {
   justify-items: center;
 }
 
+/* The same reveal the card's strike bar uses, because the struck line is what the result is reporting. */
 [data-bingo-result-bar] {
   width: 120px;
   height: var(--stroke-strike);
   border-radius: 999px;
   background: var(--win);
+  animation: strike-in var(--dur-slow) var(--ease-out);
 }
 
 [data-bingo-result-title] {
@@ -1091,6 +2137,40 @@ button[data-bingo-roster-row] {
   display: flex;
   align-items: baseline;
   gap: var(--sp-3);
+  animation: result-rise var(--dur) var(--ease-out) backwards;
+}
+
+/* The ranks are read out in order; past third they share the last step, so the whole reveal still lands inside the motion budget. */
+[data-bingo-winner]:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+[data-bingo-winner]:nth-child(n + 3) {
+  animation-delay: 120ms;
+}
+
+@keyframes result-rise {
+  from {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-bingo-result-bar],
+  [data-bingo-winner] {
+    animation: none;
+  }
+
+  /* The stagger outranks the rule above, so the delays are cleared where they were set rather than left to survive it. */
+  [data-bingo-winner]:nth-child(2),
+  [data-bingo-winner]:nth-child(n + 3) {
+    animation-delay: 0s;
+  }
 }
 
 [data-bingo-rank] {
@@ -1118,11 +2198,46 @@ button[data-bingo-roster-row] {
   justify-content: center;
 }
 
-/* The host's panel switcher, which exists only where the three panels cannot stack. */
+/* The host's panel switcher, which exists only where the three panels cannot stack.
+   It is one control with three segments, so the selection moves along a track rather than three separate buttons lighting up,
+   and which panel is showing is said by the pressed state alone. */
 [data-bingo-tabs] {
   display: grid;
   grid-auto-flow: column;
-  gap: var(--sp-2);
+  grid-auto-columns: 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r-card);
+  background: var(--ground-2);
+}
+
+[data-bingo-tabs] [data-bingo-button] {
+  padding: 0 var(--sp-2);
+  border-radius: 9px;
+  font-size: var(--text-sm);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+[data-bingo-tabs] [data-bingo-button][aria-pressed='false'] {
+  background: transparent;
+  color: var(--on-ground-2);
+}
+
+@media (hover: hover) {
+  [data-bingo-tabs] [data-bingo-button][aria-pressed='false']:hover {
+    background: var(--ground-3);
+    color: var(--on-ground);
+  }
+}
+
+/* How many people the roster panel is holding, said on the segment rather than only behind it. */
+[data-bingo-tab-count] {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  opacity: 0.7;
 }
 
 [data-bingo-switch] {
@@ -1138,4 +2253,127 @@ button[data-bingo-roster-row] {
   align-content: start;
   min-height: 0;
   overflow: auto;
+}
+
+/* The launch --------------------------------------------------------------- */
+
+/* The strip is the progress: five waits, five cells, and the card's own states carry all three of them —
+   a finished wait is a landed daub, the running one is the pending blot a tapped cell already wears,
+   and a wait not reached yet is open paper. Nothing here invents a second visual language for waiting. */
+[data-bingo-launch] {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+
+/* Sizes here are the launch artboard's own, which is why they sit beside the scale rather than on it. */
+[data-bingo-launch-status] {
+  display: grid;
+  box-sizing: border-box;
+  padding: 0 var(--sp-6);
+  gap: 28px;
+  justify-items: center;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+}
+
+[data-bingo-launch-progress] {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  width: 100%;
+}
+
+[data-bingo-launch-strip] {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--cell-gap-5);
+}
+
+/* These cells are read, never tapped, so they give up the card's touch floor rather than scrolling the strip on a narrow frame. */
+[data-bingo-launch-strip] [data-bingo-cell] {
+  min-width: 0;
+  min-height: 0;
+  font-size: clamp(22px, 7vw, 30px);
+  font-weight: 700;
+  letter-spacing: var(--tracking-caps);
+}
+
+/* daub-in ends leaving no transform behind, so the angle a landed blot keeps is declared rather than animated onto it. */
+[data-bingo-launch-strip] [data-bingo-blot] {
+  transform: rotate(var(--blot-rot, 0deg));
+}
+
+/* A step that is already done does not land again.
+   The launch is rebuilt from scratch as the handshake hands over to the socket, and a replayed daub on every finished step reads as the count starting over rather than continuing. The running step's blot still breathes, which is what says the launch is alive. */
+[data-bingo-launch-strip] [data-bingo-cell][data-state='marked'] [data-bingo-blot] {
+  animation: none;
+}
+
+[data-bingo-launch-strip] > :nth-child(1) [data-bingo-blot] {
+  --blot-rot: -8deg;
+}
+
+[data-bingo-launch-strip] > :nth-child(2) [data-bingo-blot] {
+  --blot-rot: 6deg;
+}
+
+[data-bingo-launch-strip] > :nth-child(3) [data-bingo-blot] {
+  --blot-rot: -3deg;
+}
+
+[data-bingo-launch-strip] > :nth-child(4) [data-bingo-blot] {
+  --blot-rot: 10deg;
+}
+
+[data-bingo-launch-strip] > :nth-child(5) [data-bingo-blot] {
+  --blot-rot: -12deg;
+}
+
+/* The strip says which wait; one segment crossing a reserved track says that wait is still moving. */
+[data-bingo-launch-track] {
+  width: 120px;
+  height: 3px;
+  border-radius: var(--r-chip);
+  background: var(--ground-2);
+  overflow: hidden;
+}
+
+[data-bingo-launch-sweep] {
+  display: block;
+  width: 25%;
+  height: 100%;
+  border-radius: var(--r-chip);
+  background: var(--live);
+  animation: launch-sweep 1.8s var(--ease-out) infinite;
+}
+
+[data-bingo-launch-copy] {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+}
+
+[data-bingo-launch-title] {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+}
+
+[data-bingo-launch-copy] [data-bingo-body] {
+  /* Two lines at this size: a notice is the largest thing this slot ever holds, and the strip above must not move for it. */
+  min-height: 51px;
+  font-size: 15px;
+}
+
+[data-bingo-launch-count] {
+  margin: 0;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  color: var(--on-ground-2);
 }

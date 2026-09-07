@@ -21,3 +21,6 @@ worker-configuration.d.ts
 # Secrets
 .dev.vars
 .env*
+
+# assets
+assets/

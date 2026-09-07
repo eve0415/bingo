@@ -11,6 +11,7 @@ const cell = (number: number, state: CardCellView['state'], free = false): CardC
   number,
   free,
   state,
+  live: false,
 });
 
 const CELLS = [cell(1, 'open'), cell(2, 'reach'), cell(3, 'marked'), cell(4, 'winning'), cell(5, 'pending'), cell(0, 'marked', true)];
@@ -82,7 +83,7 @@ describe('the bingo card', () => {
     expect(html).toContain('aria-label="3 マーク済み" aria-pressed="true"');
     expect(html).toContain('aria-label="4 ビンゴ" aria-pressed="true"');
     expect(html).toContain('type="button"');
-    expect(html).toContain('<span aria-label="FREE マーク済み" data-bingo-cell="" data-free="true" data-state="marked" role="img">');
+    expect(html).toContain('<span aria-label="FREE マーク済み" data-bingo-cell="" data-free="true" data-live="false" data-state="marked" role="img">');
     expect(html).not.toContain('aria-label="FREE マーク済み" aria-pressed');
 
     clickEveryAction(card);

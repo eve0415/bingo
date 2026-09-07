@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cardMinWidth, hostLayout, isDense, lobbyColumns, playerLayout } from '../../app/room/layout';
+import { cardMinWidth, hostLayout, isDense, lobbyLayout, playerLayout, screenEdge } from '../../app/room/layout';
 
 const CALLED_AND_CLAIMED = {
   showCall: true,
@@ -163,6 +163,7 @@ describe('the host layout', () => {
       columns: 'desk',
       callVariant: 'hero',
       cardMax: 420,
+      pip: false,
     });
   });
 
@@ -171,6 +172,7 @@ describe('the host layout', () => {
       columns: 'split',
       callVariant: 'hero',
       cardMax: 352,
+      pip: false,
     });
   });
 
@@ -179,6 +181,7 @@ describe('the host layout', () => {
       columns: 'one',
       callVariant: 'compact',
       cardMax: 368,
+      pip: false,
     });
   });
 
@@ -187,6 +190,7 @@ describe('the host layout', () => {
       columns: 'beside',
       callVariant: 'compact',
       cardMax: 400,
+      pip: false,
     });
   });
 
@@ -195,14 +199,45 @@ describe('the host layout', () => {
       columns: 'one',
       callVariant: 'compact',
       cardMax: 368,
+      pip: false,
     });
+  });
+
+  it('gives up everything but the draw on a frame with room for nothing else', (): void => {
+    expect(hostLayout({ width: 1280, height: 339 }, 5).pip).toBe(true);
+    expect(hostLayout({ width: 1280, height: 340 }, 5).pip).toBe(false);
+    expect(hostLayout({ width: 399, height: 479 }, 5).pip).toBe(true);
+    expect(hostLayout({ width: 400, height: 479 }, 5).pip).toBe(false);
+    expect(hostLayout({ width: 399, height: 480 }, 5).pip).toBe(false);
   });
 });
 
-describe('the lobby width', () => {
+describe('the lobby frame', () => {
   it('splits only once there is room for two readable columns', (): void => {
-    expect(lobbyColumns({ width: 900, height: 400 })).toBe('split');
-    expect(lobbyColumns({ width: 899, height: 400 })).toBe('one');
+    expect(lobbyLayout({ width: 900, height: 400 }).columns).toBe('split');
+    expect(lobbyLayout({ width: 899, height: 400 }).columns).toBe('one');
+  });
+
+  it('falls back to the two answers that fit when the frame is too short to hold the rest', (): void => {
+    expect(lobbyLayout({ width: 1280, height: 339 }).pip).toBe(true);
+    expect(lobbyLayout({ width: 1280, height: 340 }).pip).toBe(false);
+    expect(lobbyLayout({ width: 399, height: 479 }).pip).toBe(true);
+    expect(lobbyLayout({ width: 400, height: 479 }).pip).toBe(false);
+    expect(lobbyLayout({ width: 399, height: 480 }).pip).toBe(false);
+  });
+
+  /* Between the split and a desk the settings share the width with the roster, which is narrower than the caption needs. */
+  it('puts a caption beside its control only where both fit', (): void => {
+    expect(lobbyLayout({ width: 559, height: 800 }).rows).toBe('stacked');
+    expect(lobbyLayout({ width: 560, height: 800 }).rows).toBe('beside');
+    expect(lobbyLayout({ width: 900, height: 800 }).rows).toBe('stacked');
+    expect(lobbyLayout({ width: 1100, height: 800 }).rows).toBe('beside');
+  });
+
+  it('spends the gutters a game screen has to save', (): void => {
+    expect(lobbyLayout({ width: 419, height: 800 }).edge).toBe('base');
+    expect(lobbyLayout({ width: 420, height: 800 }).edge).toBe('roomy');
+    expect(lobbyLayout({ width: 900, height: 800 }).edge).toBe('wide');
   });
 });
 
@@ -210,5 +245,7 @@ describe('a dense frame', () => {
   it('tightens the edges only on a frame narrower than a large phone', (): void => {
     expect(isDense({ width: 390, height: 844 })).toBe(true);
     expect(isDense({ width: 420, height: 844 })).toBe(false);
+    expect(screenEdge(true)).toBe('tight');
+    expect(screenEdge(false)).toBe('base');
   });
 });

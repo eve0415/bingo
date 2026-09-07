@@ -3,7 +3,7 @@ import type { RoomView } from '@bingo/wrapper/protocol';
 
 import { describe, expect, it } from 'vitest';
 
-import { NAMES, SCENES, SIZES, isScene } from '../../app/preview/fixtures';
+import { PROFILES, SCENES, SIZES, isScene } from '../../app/preview/fixtures';
 
 const RUN = 15;
 
@@ -18,8 +18,10 @@ const centreOf = (size: number): number => Math.floor(size / 2) * size + Math.fl
 describe('the preview room', () => {
   it('seats a named table and offers every board size', (): void => {
     expect(SIZES).toEqual([3, 5, 7, 9]);
-    expect(NAMES.size).toBe(6);
-    expect([...NAMES.values()]).toContain('ゆうき');
+    expect(PROFILES.size).toBe(6);
+    expect([...PROFILES.values()].map(profile => profile.name)).toContain('ゆうき');
+    // One seat is deliberately left without a picture, so the gallery shows the drawn initial beside the served ones.
+    expect([...PROFILES.values()].filter(profile => profile.avatar === null)).toHaveLength(1);
   });
 
   it('recognises the scenes it has and refuses the ones it does not', (): void => {
