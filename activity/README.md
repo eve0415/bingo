@@ -28,19 +28,25 @@ From there the room token is what every request to `/rooms/:id/*` carries. The r
 
 ## Routes
 
-| Route          | Purpose                                                                          |
-| -------------- | -------------------------------------------------------------------------------- |
-| `/`            | The game. Runs the handshake, then the room screen for a player or a host.       |
-| `/preview`     | The room screens rendered from fixtures, for working on the interface.           |
-| `/api/config`  | The OAuth client id, so it is not baked into the bundle.                         |
-| `/api/token`   | The code exchange, participant check and room-token mint described above.        |
-| `/api/avatars` | Per-server avatars for the instance's participants, resolved with the bot token. |
-| `/rooms/:id/*` | Everything under a room, verified here and proxied to the room server.           |
-| `/health`      | Unauthenticated on purpose: it reports whether the binding is reachable.         |
+| Route          | Purpose                                                                               |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `/`            | The game. Runs the handshake, then the room screen for a player, a host or a watcher. |
+| `/preview`     | The room screens rendered from fixtures, for working on the interface.                |
+| `/api/config`  | The OAuth client id, so it is not baked into the bundle.                              |
+| `/api/token`   | The code exchange, participant check and room-token mint described above.             |
+| `/api/avatars` | Per-server avatars for the instance's participants, resolved with the bot token.      |
+| `/rooms/:id/*` | Everything under a room, verified here and proxied to the room server.                |
+| `/health`      | Unauthenticated on purpose: it reports whether the binding is reachable.              |
 
 ## What the lobby exposes
 
 The host sets the board at 3, 5, 7 or 9 across, chooses whether daubing is automatic or by hand, sets how many wins end the game, and decides how much of the draw the room gets to see. The engine and the room server accept more than that — custom win patterns, cards per player, late-join policy, claim-based wins — and `../wrapper/README.md` documents the full space. This client offers the four a party host actually changes.
+
+## Taking a seat, and watching without one
+
+Everyone in the call is dealt a card when the game is dealt, and nobody has to stay in it. 参加しない gives a seat up from the lobby, from beside the roster on the card screen, and from under the host's own card; 参加する takes it back. The engine keeps a departed player's card, their marks and the draw they joined at, so a seat taken back mid-game is the same seat.
+
+Without one, the activity shows the caller's view of the room — the number, the board it is crossed off on, and the roster with every card one tap behind a row. That is also what somebody who opens the activity mid-game sees, because a game that has started is closed to new cards but not to company; the lobby of the next game seats them.
 
 ## Configuration
 
@@ -76,15 +82,17 @@ pnpm test
 pnpm test:coverage
 ```
 
-Tests run inside `workerd` through `@cloudflare/vitest-pool-workers`, against the same `wrangler.json` this worker deploys with, so the service binding and the request headers behave as they do in production. Coverage requires 100% of statements, branches, functions and lines across this package's TypeScript modules under `app`, plus `app/room/call.tsx`. The other React components and the Discord SDK glue sit outside the measured set, because a browser is the only place they run for real.
+Tests run inside `workerd` through `@cloudflare/vitest-pool-workers`, against the same `wrangler.json` this worker deploys with, so the service binding and the request headers behave as they do in production. Coverage requires 100% of statements, branches, functions and lines across everything under `app`, the screens included; only the Discord SDK glue and the generated route tree are excluded, because a browser is the only place those run for real. There is no DOM: a screen is rendered to a string and every handler on the tree is fired, which is what `test/room/fixture.ts` exists to do.
 
 ## Deploying
 
 The room server has to exist first, because this worker's service binding names it.
 
 ```sh
-pnpm -C ../wrapper deploy
-pnpm deploy
+pnpm -C ../wrapper run deploy
+pnpm run deploy
 ```
+
+`run` is what keeps pnpm's own `deploy` command from taking the word.
 
 In the Discord Developer Portal, point the Activity's URL mapping at the deployed worker. The scopes the handshake asks for are `identify` and `rpc.activities.write`.

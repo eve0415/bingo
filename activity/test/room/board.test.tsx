@@ -2,8 +2,9 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Board } from '../../app/room/board';
+import { seatMessage } from '../../app/room/commands';
 
-import { HOST, IDLE, ME, PROFILES, clickEveryAction, committedRoom, room, sink, state, view } from './fixture';
+import { HOST, IDLE, KEYS, ME, OTHER, PROFILES, clickEveryAction, committedRoom, room, sink, state, view } from './fixture';
 
 const DESK = {
   width: 1200,
@@ -264,6 +265,37 @@ describe('the board during a running game', () => {
     expect(html).toContain('<span data-bingo-status="">· <!-- -->接続が切れました</span>');
     expect(html).toContain('接続が切れました。アクティビティを開き直してください');
     expect(html).not.toContain('>ビンゴを宣言</button>');
+  });
+
+  it('hands somebody the game never seated the view the caller gets, not a player screen', (): void => {
+    const out = sink();
+    const board = (
+      <Board
+        me={OTHER}
+        measure={DESK}
+        profiles={PROFILES}
+        onCommand={(message): void => {
+          out.sent.push(message);
+        }}
+        onUi={(action): void => {
+          out.ui.push(action);
+        }}
+        state={state()}
+        ui={IDLE}
+      />
+    );
+    const html = renderToString(board);
+    expect(html).toContain('data-bingo-flash=""');
+    expect(html).toContain('>参加する</button>');
+    // A player with no card says so on a note; a watcher reads the room instead, and the draw is still the host's alone.
+    expect(html).not.toContain('このゲームにはカードがありません');
+    expect(html).not.toContain('data-bingo-play=""');
+    expect(html).not.toContain('>ビンゴを宣言</button>');
+    expect(html).not.toContain('>ゲームを終了</button>');
+
+    clickEveryAction(board);
+    expect(out.ui).toEqual([{ type: 'open', overlay: { kind: 'card', player: KEYS.me } }]);
+    expect(out.sent).toEqual([seatMessage(false)]);
   });
 
   it('keeps the claim off a screen with no card to claim on', (): void => {

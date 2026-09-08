@@ -119,6 +119,9 @@ export const isHost = (view: RoomView, me: PlayerIdDto): boolean => samePlayer(v
 
 export const isSeated = (view: RoomView, me: PlayerIdDto): boolean => view.players.some(player => samePlayer(player, me));
 
+/** What the seat control says, which is the thing it would do rather than the state it is reporting. */
+export const seatLabel = (seated: boolean): string => (seated ? '参加しない' : '参加する');
+
 export const DAUB_LABEL = {
   Auto: '自動',
   Manual: '自分でタップ',
@@ -180,26 +183,27 @@ const FAILURE_TEXT = new Map([
   ['WrongPhase', 'いまはその操作ができません'],
   ['NoBingo', 'そろっている列がありません'],
   ['NotAParticipant', 'このゲームには参加していません'],
-  ['RoomLocked', 'このゲームは締め切られています。次のゲームから参加できます'],
+  ['RoomLocked', 'いまは参加できません。次のゲームからどうぞ'],
   ['NumberNotDrawn', 'その番号はまだ呼ばれていません'],
   ['NumberNotOnCard', 'その番号はカードにありません'],
   ['NothingToUndo', '取り消せる番号がありません'],
   ['NoNumbersRemain', '番号をすべて引きました'],
   ['BacklogMarkNotAllowed', '参加する前に呼ばれた番号はマークできません'],
   ['RateLimited', '操作が速すぎます。少し待ってください'],
+  ['JoinRejected', '席がいっぱいです。空きが出たら参加できます'],
 ]);
 
 /** Nothing here reconnects, so the notice says what happened and what to do rather than promising a recovery that is not coming. */
 const CLOSE_TEXT = new Map([
   ['Kicked', 'この部屋から外れました。ホストに聞いてみてください'],
-  ['Join rejected', 'この部屋には入れませんでした。ホストに聞いてみてください'],
   ['Room expired', 'この部屋は時間切れで閉じました'],
 ]);
 
 export const noticeOf = (state: RoomState): string | null => {
   if (state.status === 'connecting') return '接続しています';
   if (state.status === 'closed') {
-    // The close code is the same for a kick and for a refused join, so the reason beside it is what tells them apart.
+    /* A room that closes a socket says why on it; a refused upgrade carries no socket to say anything on, and reaches the browser as a bare failed handshake.
+       So an unrecognised close is one nothing is known about, and the notice says that rather than guessing at the likeliest cause. */
     return CLOSE_TEXT.get(state.closure?.reason ?? '') ?? '接続が切れました。アクティビティを開き直してください';
   }
   if (state.failure === null) return null;

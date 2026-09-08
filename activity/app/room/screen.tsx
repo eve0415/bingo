@@ -1,4 +1,5 @@
 import type { Edge } from './layout';
+import type { Panel } from './uiState';
 import type { JSX, ReactNode } from 'react';
 
 import { Button } from './button';
@@ -53,6 +54,35 @@ export const Wordmark = ({ players, status }: { players: number; status?: string
   </div>
 );
 
+/** One segment of the switcher: which panel it shows, what it is called, and the tally it is worth carrying on the segment itself. */
+export interface PanelTab {
+  readonly panel: Panel;
+  readonly label: string;
+  readonly count?: number;
+}
+
+/**
+ * One control with segments rather than a button each: which panel is showing is said by the pressed state alone, and the track is what makes them one thing.
+ * Which segments there are belongs to the screen, because a frame too narrow to hold the panels side by side is the only reason any screen has them.
+ */
+export const Tabs = ({ current, onPanel, panels }: { current: Panel; onPanel: (panel: Panel) => void; panels: readonly PanelTab[] }): JSX.Element => (
+  <div data-bingo-tabs="">
+    {panels.map(entry => (
+      <Button
+        key={entry.panel}
+        onClick={() => {
+          onPanel(entry.panel);
+        }}
+        pressed={current === entry.panel}
+        variant="primary"
+      >
+        {entry.label}
+        {entry.count === undefined ? null : <span data-bingo-tab-count="">{entry.count}</span>}
+      </Button>
+    ))}
+  </div>
+);
+
 export const Reserved = ({ children, slot }: { children: ReactNode; slot: 'reach' | 'toast' }): JSX.Element => (
   <div aria-live="polite" data-bingo-reserved="" data-slot={slot}>
     {children}
@@ -74,7 +104,8 @@ export const Notice = ({ notice }: { notice: string | null }): JSX.Element => (
     {notice === null ? null : (
       <span data-bingo-toast="">
         <span aria-hidden="true" data-bingo-toast-dot="" />
-        {notice}
+        {/* The pill is a flex line, and an ellipsis is something a block container does to its own text, so the sentence carries its own box. */}
+        <span data-bingo-toast-text="">{notice}</span>
       </span>
     )}
   </Reserved>

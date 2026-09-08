@@ -11,6 +11,12 @@ export const commandMessage = (command: CommandDto): ClientMessage => ({
   command,
 });
 
+/**
+ * Taking a seat and giving one up, which are the same decision read in two directions.
+ * Every screen offers it, because being in the room and playing the game are separate facts and either can change while the other holds.
+ */
+export const seatMessage = (seated: boolean): ClientMessage => commandMessage(seated ? 'Leave' : 'Join');
+
 export const cellMessage = (cardIx: number, index: number, size: number, marked: boolean): ClientMessage => {
   const position = {
     cardIx,

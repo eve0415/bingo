@@ -9,8 +9,8 @@ import type { JSX } from 'react';
 
 import { arrowFocus, escapeToToggle } from './arrows';
 import { Button } from './button';
-import { commandMessage, kickMessage, newGameMessage, transferHostMessage } from './commands';
-import { commitmentText, isSeated, overlayMember, rosterMembers } from './model';
+import { commandMessage, kickMessage, newGameMessage, seatMessage, transferHostMessage } from './commands';
+import { commitmentText, isSeated, overlayMember, rosterMembers, seatLabel } from './model';
 import { RosterRow } from './roster';
 import { Dialog, Notice, Screen, Wordmark } from './screen';
 import { settingGroups, settingsSummary } from './settings';
@@ -217,12 +217,12 @@ export const Lobby = ({
   const seat = over ? null : (
     <Button
       onClick={() => {
-        onSend(commandMessage(seated ? 'Leave' : 'Join'));
+        onSend(seatMessage(seated));
       }}
       size="lg"
       variant="ghost"
     >
-      {seated ? '参加しない' : '参加する'}
+      {seatLabel(seated)}
     </Button>
   );
   const roster = (

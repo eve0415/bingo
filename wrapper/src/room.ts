@@ -132,6 +132,9 @@ const markEventPlayer = (event: EventDto): PlayerIdDto | null => {
   if ('MarkPlaced' in event) return event.MarkPlaced.player;
   return 'MarkRemoved' in event ? event.MarkRemoved.player : null;
 };
+/** Whether a batch of events moved anybody in or out of the game, which is what decides who is playing and therefore which horizons are armed. */
+const seatingChanged = (events: EventDto[]): boolean => events.some(event => eventPlayerJoined(event) !== null || eventPlayerRemoved(event) !== null);
+const isSeated = (cache: GameCache, player: PlayerIdDto): boolean => cache.activePlayers.some(member => samePlayer(member, player));
 const updateGameCache = (cache: GameCache, events: EventDto[]): GameCache => {
   const drawnOrder = [...cache.drawnOrder];
   const activePlayers = new Map(cache.activePlayers.map(player => [playerKey(player), player]));
@@ -516,9 +519,6 @@ export class Room extends DurableObject<Env> {
           commitmentRoster: decodeStored<PlayerIdDto[]>(game.roster),
         };
   }
-  private drawnOrder(gameIndex: number): number[] {
-    return this.gameCache(gameIndex).drawnOrder;
-  }
   private static send(socket: WebSocket, message: ServerMessage): void {
     socket.send(JSON.stringify(message));
   }
@@ -546,9 +546,11 @@ export class Room extends DurableObject<Env> {
    * while the room may have handed itself on since, which is how a room whose host left mid-result carries on at all.
    * Which projection a recipient gets is already decided by the room's host, so the view names that same one: otherwise the one message
    * would tell somebody they are looking at the host's screen and that they are not the host.
+   * Whoever holds no seat is given the same projection the host is: the cards are what there is to watch, and a watcher with only their own
+   * would be handed an empty screen. What they may see of them is still the room's to decide, which the redaction below applies to both alike.
    */
-  private static project(state: Snapshot, player: PlayerIdDto, host: PlayerIdDto): PlayerViewDto | HostViewDto {
-    const view = samePlayer(player, host) ? requireEngine(projectHost(state)) : requireEngine(projectPlayer(state, player));
+  private static project(state: Snapshot, player: PlayerIdDto, host: PlayerIdDto, seated: boolean): PlayerViewDto | HostViewDto {
+    const view = seated && !samePlayer(player, host) ? requireEngine(projectPlayer(state, player)) : requireEngine(projectHost(state));
     return {
       ...view,
       host,
@@ -556,8 +558,9 @@ export class Room extends DurableObject<Env> {
   }
   private snapshotMessage(state: Snapshot, game: GameRow, player: PlayerIdDto): ServerMessage {
     const info = this.roomInfo(game);
-    const fullOrder = this.drawnOrder(game.game_ix);
-    const view = redactView(Room.project(state, player, info.host), info.settings, fullOrder, player);
+    const cache = this.gameCache(game.game_ix);
+    const fullOrder = cache.drawnOrder;
+    const view = redactView(Room.project(state, player, info.host, isSeated(cache, player)), info.settings, fullOrder, player);
     return {
       type: 'snapshot',
       view,
@@ -573,13 +576,14 @@ export class Room extends DurableObject<Env> {
     const game = this.game();
     const state = this.snapshot(game);
     const info = this.roomInfo(game);
-    const fullOrder = this.drawnOrder(game.game_ix);
+    const cache = this.gameCache(game.game_ix);
+    const fullOrder = cache.drawnOrder;
     const kicked = this.kickedPlayers();
     let revealed = false;
     for (const socket of this.ctx.getWebSockets()) {
       const player = socket.readyState === WebSocket.OPEN ? Room.socketPlayer(socket) : null;
       if (player !== null && !kicked.has(playerKey(player))) {
-        const view = redactView(Room.project(state, player, info.host), info.settings, fullOrder, player);
+        const view = redactView(Room.project(state, player, info.host, isSeated(cache, player)), info.settings, fullOrder, player);
         const order = redactOrder(fullOrder, info.settings, view.phase);
         revealed ||= view.revealedSeed !== null;
         Room.send(socket, {
@@ -636,15 +640,32 @@ export class Room extends DurableObject<Env> {
     }
     return [...present.values()];
   }
-  // Presence is about seats, so an unseated player reads as absent while their activity is still open. Discarding a room keys on connections instead, minus the sockets that can no longer say who they belong to.
-  private vacant(excluded?: WebSocket): boolean {
-    return this.ctx.getWebSockets().every(socket => socket === excluded || Room.socketPlayer(socket) === null);
+  /**
+   * Everyone with a socket on this room, whether or not the game has seated them.
+   * The host role and the room's own existence follow this rather than the seating: a caller who holds no card is still running the room,
+   * and somebody watching one is still in it. Only who is *playing* is read off `presentPlayers`, which is what the empty-room horizon asks.
+   */
+  private connectedPlayers(excluded?: WebSocket): PlayerIdDto[] {
+    const connected = new Map<string, PlayerIdDto>();
+    for (const socket of this.ctx.getWebSockets()) {
+      if (socket !== excluded) {
+        const player = Room.socketPlayer(socket);
+        if (player !== null) connected.set(playerKey(player), player);
+      }
+    }
+    return [...connected.values()];
   }
-  private static departingHost(events: EventDto[], host: PlayerIdDto): boolean {
-    return events.some(event => {
-      const removed = eventPlayerRemoved(event);
-      return removed !== null && samePlayer(removed, host);
-    });
+  // Sockets that can no longer say who they belong to are what a vacant room is left holding.
+  private vacant(excluded?: WebSocket): boolean {
+    return this.connectedPlayers(excluded).length === 0;
+  }
+  /**
+   * Whether the room has put its own host out of it. Giving up a seat is not that: the caller of a game need not be playing it,
+   * so a host who stops holding a card goes on running the room and the role moves only when they are removed from it — or, through the
+   * host-absence horizon, when their socket has been gone long enough to say they are not here at all.
+   */
+  private static removedHost(events: EventDto[], host: PlayerIdDto): boolean {
+    return events.some(event => 'PlayerKicked' in event && samePlayer(event.PlayerKicked.target, host));
   }
   private updateRoster(events: EventDto[], identity: VerifiedIdentity): void {
     for (const event of events) {
@@ -664,25 +685,31 @@ export class Room extends DurableObject<Env> {
     this.clearDeadline('reveal_backstop');
     return [...events, ...closed.value.events];
   }
-  private transferDepartingHost(game: GameRow, events: EventDto[], oldHost: PlayerIdDto): EventDto[] {
-    if (!Room.departingHost(events, oldHost)) return events;
+  private transferRemovedHost(game: GameRow, events: EventDto[], oldHost: PlayerIdDto): EventDto[] {
+    if (!Room.removedHost(events, oldHost)) return events;
     if (this.setting<RoomSettings>(ROOM_SETTINGS).hostAutoClose) {
       return this.closeForDepartedHost(game, events, oldHost);
     }
-    const target = this.presentPlayers().at(0);
+    const playing = this.presentPlayers().at(0);
+    const target = playing ?? this.connectedPlayers().find(player => !samePlayer(player, oldHost));
     if (target === undefined) {
       // A host with nobody to hand the room to is the room; their departure ends the game rather than leaving it open with no one to call numbers.
       this.setDeadline('room_empty', Date.now() + DEADLINE_HORIZONS.roomEmpty);
       this.queueAlarm();
       return this.closeForDepartedHost(game, events, oldHost);
     }
+    if (playing === undefined) {
+      // Only a player in the game can be its host, so a watcher takes the room over without the game changing hands — the same split a finished game already makes.
+      this.writeSetting(HOST, target);
+      return events;
+    }
     const transfer = this.apply(game, oldHost, {
       TransferHost: {
-        target,
+        target: playing,
       },
     });
     if (!transfer.ok) return events;
-    this.writeSetting(HOST, target);
+    this.writeSetting(HOST, playing);
     return [...events, ...transfer.value.events];
   }
   private joinAllowed(player: PlayerIdDto): boolean {
@@ -709,11 +736,11 @@ export class Room extends DurableObject<Env> {
       return;
     }
     if (startRoster !== null) this.publishCommitment(game, startRoster);
-    const events = this.transferDepartingHost(game, result.value.events, oldHost);
+    const events = this.transferRemovedHost(game, result.value.events, oldHost);
     this.updateRoster(events, identity);
-    /* Absence is a fact about the host, not about a socket, so a room that has just changed hands recomputes it here rather than
-       waiting for the next connection or disconnection to notice that the new host was never on the other end of one. */
-    if (!samePlayer(this.setting<PlayerIdDto>(HOST), oldHost)) this.refreshPresence();
+    /* Both the seating and the host decide a horizon — who is playing arms the empty-room one, who is here arms the host's — so a command that
+       moved either recomputes them now rather than waiting for the next connection or disconnection to notice. */
+    if (seatingChanged(events) || !samePlayer(this.setting<PlayerIdDto>(HOST), oldHost)) this.refreshPresence();
     this.broadcast(events);
   }
   private handleNewGame(socket: WebSocket, identity: VerifiedIdentity, config: ConfigDto | null): void {
@@ -747,7 +774,8 @@ export class Room extends DurableObject<Env> {
     const gameIndex = current.game_ix + 1;
     this.createGame(gameIndex, nextConfig, host, this.roster(), prepared.value);
     this.writeSetting(CURRENT_GAME, gameIndex);
-    this.queueAlarm();
+    // The new game deals the roster back in, so who is playing has changed and the horizons the old game armed no longer describe the room.
+    this.refreshPresence();
     this.broadcast([]);
   }
   private handleSettings(socket: WebSocket, actor: PlayerIdDto, changes: Partial<RoomSettings>): void {
@@ -786,42 +814,50 @@ export class Room extends DurableObject<Env> {
   private refreshPresence(excluded?: WebSocket): void {
     if (this.optionalSetting<number>(CURRENT_GAME) === null) return;
     const present = this.presentPlayers(excluded);
+    const connected = this.connectedPlayers(excluded);
     const now = Date.now();
     if (present.length === 0) {
       this.setDeadline('room_empty', now + DEADLINE_HORIZONS.roomEmpty);
     } else {
       this.clearDeadline('room_empty');
     }
-    if (this.vacant(excluded)) {
+    if (connected.length === 0) {
       this.setDeadline('room_vacant', now + DEADLINE_HORIZONS.roomVacant);
     } else {
       this.clearDeadline('room_vacant');
     }
     const host = this.setting<PlayerIdDto>(HOST);
-    if (present.some(player => samePlayer(player, host))) {
+    if (connected.some(player => samePlayer(player, host))) {
       this.clearDeadline('host_absent');
     } else {
       this.setDeadlineIfMissing('host_absent', now + DEADLINE_HORIZONS.hostAbsent);
     }
     this.queueAlarm();
   }
+  /**
+   * What opening a socket gets you: a seat where the game has one to give, and a view of the room either way.
+   * A join the room or the engine refuses — the roster full, late joining closed, the game already over — leaves the socket open to watch
+   * instead of turning it away, because somebody who cannot be dealt a card can still follow the game and take a seat in the next one.
+   * A watcher is deliberately left off the roster: that list is who the room has seated, and it is what the next game deals itself to.
+   */
   private prepareConnection(identity: VerifiedIdentity): {
     state: Snapshot;
     events: EventDto[];
-  } | null {
+  } {
     const game = this.game();
     const state = this.snapshot(game);
+    const watching = {
+      state,
+      events: [],
+    };
     const view = requireEngine(projectPlayer(state, identity.player));
     if (view.players.some(player => samePlayer(player, identity.player))) {
       this.addRoster(identity);
-      return {
-        state,
-        events: [],
-      };
+      return watching;
     }
-    if (!this.joinAllowed(identity.player)) return null;
+    if (!this.joinAllowed(identity.player)) return watching;
     const joined = this.apply(game, identity.player, 'Join');
-    if (!joined.ok) return null;
+    if (!joined.ok) return watching;
     this.addRoster(identity);
     return joined.value;
   }
@@ -869,11 +905,12 @@ export class Room extends DurableObject<Env> {
       // The identity schema bounds every string it carries, which is what keeps this attachment inside the size a socket can hold.
       server.serializeAttachment(identity);
       if (existing === null) this.createRoom(roomId, identity);
-      const connection = this.prepareConnection(identity);
-      if (connection === null) {
-        server.close(1008, 'Join rejected');
+      // The one refusal left: a kicked player may not watch either, and the reason they are given is the one their revoked sockets were closed with.
+      if (this.isKicked(identity.player)) {
+        server.close(1008, 'Kicked');
         return errorJson('JoinRejected', 409);
       }
+      const connection = this.prepareConnection(identity);
       if (connection.events.length === 0) {
         this.sendSnapshot(server, identity.player);
       } else {
@@ -967,12 +1004,15 @@ export class Room extends DurableObject<Env> {
     }
   }
   private expireHostAbsence(): void {
+    const host = this.setting<PlayerIdDto>(HOST);
+    // The horizon is about a host who is not here, so a row that outlived its reason expires into nothing rather than ending a game the host is still running.
+    if (this.connectedPlayers().some(player => samePlayer(player, host))) return;
     if (this.setting<RoomSettings>(ROOM_SETTINGS).hostAutoClose) {
       this.closeCurrentGame();
       return;
     }
-    const host = this.setting<PlayerIdDto>(HOST);
-    const target = this.presentPlayers().find(player => !samePlayer(player, host));
+    const playing = this.presentPlayers().find(player => !samePlayer(player, host));
+    const target = playing ?? this.connectedPlayers().find(player => !samePlayer(player, host));
     if (target === undefined) {
       // Nobody is left to take the room over, so the game ends with the host rather than waiting out the empty-room deadline in play.
       this.setDeadline('room_empty', Date.now() + DEADLINE_HORIZONS.roomEmpty);
@@ -980,14 +1020,15 @@ export class Room extends DurableObject<Env> {
       return;
     }
     const game = this.game();
-    if (game.phase === 'Finished') {
+    // A game keeps the host it was played under, and only a player in it can be that; a finished game and a watching successor both take the room alone.
+    if (game.phase === 'Finished' || playing === undefined) {
       this.writeSetting(HOST, target);
       this.broadcast([]);
       return;
     }
     const transfer = this.apply(game, host, {
       TransferHost: {
-        target,
+        target: playing,
       },
     });
     if (!transfer.ok) return;

@@ -1068,8 +1068,9 @@ button[data-bingo-roster-row] {
   line-height: 1.3;
 }
 
+/* A track that sizes to its content lets one long notice widen the whole screen past the frame, so both of these are capped at it. */
 [data-bingo-columns][data-columns='one'] {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 [data-bingo-columns][data-columns='beside'] {
@@ -1077,7 +1078,13 @@ button[data-bingo-roster-row] {
 }
 
 [data-bingo-columns][data-columns='split'] {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+/* The caller's screen without the caller's controls has two columns of content rather than three, so the board takes the width the host's own card would have had.
+   The roster keeps the width the desk gives it, because a roster row reads no better for being stretched across half a wide frame. */
+[data-bingo-columns][data-columns='bench'] {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
 }
 
 [data-bingo-columns][data-columns='desk'] {
@@ -1095,6 +1102,8 @@ button[data-bingo-roster-row] {
 
 [data-bingo-column] {
   display: grid;
+  /* Its own track is capped too, or a child that refuses to wrap — a one-line notice — widens the column past the frame the grid above just capped. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-4);
   align-content: start;
   min-width: 0;
@@ -1813,6 +1822,12 @@ button[data-bingo-roster-row] {
   font-size: var(--text-sm);
   font-weight: 500;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-bingo-toast-text] {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

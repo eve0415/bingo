@@ -7,6 +7,7 @@ import {
   daubMessage,
   kickMessage,
   newGameMessage,
+  seatMessage,
   settingsMessage,
   sizeMessage,
   transferHostMessage,
@@ -31,6 +32,13 @@ describe('room commands', () => {
       { type: 'command', command: 'Draw' },
       { type: 'command', command: 'Undo' },
       { type: 'command', command: 'Close' },
+    ]);
+  });
+
+  it('reads the seat control in both directions', (): void => {
+    expect([seatMessage(true), seatMessage(false)]).toEqual([
+      { type: 'command', command: 'Leave' },
+      { type: 'command', command: 'Join' },
     ]);
   });
 

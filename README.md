@@ -81,7 +81,7 @@ None of these are committed, and each is produced by the build.
 | `cargo clippy --workspace --all-targets -- -D warnings` | Lints Rust under the workspace deny list.                                |
 | `cargo fmt --check`                                     | Checks Rust formatting.                                                  |
 
-Both TypeScript packages run their tests inside `workerd` through `@cloudflare/vitest-pool-workers`, against the same `wrangler.json` they deploy with, so bindings and Durable Objects behave in test as they do in production. Coverage is istanbul and the threshold is 100% of statements, branches, functions and lines in both. The measured set is all of `wrapper/src`, and on the client side its TypeScript modules under `app`; most React components and the Discord SDK glue sit outside it, because a browser is the only place they run for real.
+Both TypeScript packages run their tests inside `workerd` through `@cloudflare/vitest-pool-workers`, against the same `wrangler.json` they deploy with, so bindings and Durable Objects behave in test as they do in production. Coverage is istanbul and the threshold is 100% of statements, branches, functions and lines in both. The measured set is all of `wrapper/src` and all of the client's `app`, its screens included; only the Discord SDK glue and the generated route tree sit outside it, because a browser is the only place those run for real.
 
 Nothing runs any of this automatically — the repository carries no CI configuration — so a change is verified by running the list above before it is pushed.
 
@@ -90,9 +90,11 @@ Nothing runs any of this automatically — the repository carries no CI configur
 Deploy the room server first; a client's service binding needs `bingo` to already exist.
 
 ```sh
-pnpm -C wrapper deploy
-pnpm -C activity deploy
+pnpm -C wrapper run deploy
+pnpm -C activity run deploy
 ```
+
+`run` is not optional here: pnpm has a `deploy` command of its own, and a bare `pnpm deploy` in this workspace fails with `ERR_PNPM_CANNOT_DEPLOY_MANY` rather than reaching the script.
 
 ## License
 

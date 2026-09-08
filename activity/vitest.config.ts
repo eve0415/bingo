@@ -52,8 +52,8 @@ export default defineConfig({
     css: { include: [/room\.css/u] },
     coverage: {
       provider: 'istanbul',
-      // Everything the worker serves is reached through the tests; the browser handshake alone needs a DOM.
-      include: ['app/**/*.ts', 'app/room/call.tsx'],
+      // Everything the worker serves is reached through the tests, screens included: they are rendered to a string and their handlers fired, which is what a suite with no DOM can do.
+      include: ['app/**/*.{ts,tsx}'],
       exclude: ['app/discord.ts', 'app/routeTree.gen.ts'],
       reporter: [
         [

@@ -10,9 +10,10 @@ import { Host } from './host';
 import { Launch } from './launch';
 import { hostLayout, isDense, lobbyLayout, playerLayout } from './layout';
 import { Lobby } from './lobby';
-import { cardsOf, isHost, noticeOf, visibilityOf } from './model';
+import { cardsOf, isHost, isSeated, noticeOf, visibilityOf } from './model';
 import { Player } from './player';
 import { Note, Screen } from './screen';
+import { Spectator } from './spectator';
 import { Win } from './win';
 
 /** Before the first snapshot there is no room to draw, so the launch keeps counting rather than swapping to a second waiting screen. */
@@ -25,7 +26,7 @@ const Refused = ({ notice }: { notice: string }): JSX.Element => (
   </Screen>
 );
 
-/** One room, four screens, chosen by the phase the engine reports and by whether this player is the one calling numbers. */
+/** One room, five screens, chosen by the phase the engine reports, by whether this player is the one calling numbers, and by whether they hold a card at all. */
 export const Board = ({
   state,
   me,
@@ -87,6 +88,24 @@ export const Board = ({
         onSend={onCommand}
         onUi={onUi}
         pending={state.pending}
+        ui={ui}
+        view={view}
+        visibility={visibility}
+      />
+    );
+  }
+  // Somebody the game has not seated has no card to protect, so they get the caller's screen rather than a player's with nothing on it.
+  if (!isSeated(view, me)) {
+    return (
+      <Spectator
+        dense={isDense(measure)}
+        drawnOrder={state.drawnOrder}
+        layout={hostLayout(measure, view.config.size)}
+        me={me}
+        profiles={profiles}
+        notice={notice}
+        onSend={onCommand}
+        onUi={onUi}
         ui={ui}
         view={view}
         visibility={visibility}

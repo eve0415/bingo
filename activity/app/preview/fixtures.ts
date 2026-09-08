@@ -26,6 +26,12 @@ const OTHERS: PlayerIdDto[] = ['1181199416888139849', '1181199416892334153', '11
   subject,
 }));
 
+/** Somebody in the call who is not in the game. The table is all six of the others, and none of the cards on it is theirs. */
+const WATCHER: PlayerIdDto = {
+  issuer: 'discord',
+  subject: '1181199416904917065',
+};
+
 /** One player is left unreported, so the gallery shows both the picture Discord serves and the drawn initial that stands in for it. */
 const UNREPORTED = 2;
 
@@ -146,6 +152,10 @@ export const SCENES = {
   }),
   host: (size: number) => ({
     me: HOST,
+    state: state(size, 'Running', {}, {}),
+  }),
+  spectator: (size: number) => ({
+    me: WATCHER,
     state: state(size, 'Running', {}, {}),
   }),
   win: (size: number) => ({

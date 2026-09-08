@@ -3,6 +3,7 @@ import type { PendingMark } from './connection';
 import type { Columns, HostLayout } from './layout';
 import type { RosterMember, Visibility } from './model';
 import type { ProfileLookup } from './profiles';
+import type { PanelTab } from './screen';
 import type { HostOverlayKind, Panel, UiAction, UiState } from './uiState';
 import type { CardViewDto } from '@bingo/wasm/CardViewDto';
 import type { PlayerIdDto } from '@bingo/wasm/PlayerIdDto';
@@ -13,37 +14,14 @@ import { Button } from './button';
 import { CalledNumber } from './call';
 import { BingoCard } from './card';
 import { StatusChip } from './chip';
-import { cellMessage, commandMessage, kickMessage } from './commands';
+import { cellMessage, commandMessage, kickMessage, seatMessage } from './commands';
+import { Flashboard } from './flashboard';
 import { screenEdge } from './layout';
 import { cardCells, isReach, poolSize, strikeLines } from './lines';
-import { calledEntries, cardsOf, flashboard, overlayMember, pendingFor, progressLabel, rosterMembers } from './model';
+import { calledEntries, cardsOf, isSeated, overlayMember, pendingFor, progressLabel, rosterMembers, seatLabel } from './model';
 import { RosterRow } from './roster';
-import { Dialog, Notice, ReachNote, Screen, Wordmark } from './screen';
+import { Dialog, Notice, ReachNote, Screen, Tabs, Wordmark } from './screen';
 import { hostOverlay } from './uiState';
-
-const Flashboard = ({ drawnOrder, size }: { drawnOrder: readonly number[]; size: number }): JSX.Element => (
-  <div data-bingo-flash="" data-lettered={size === 5}>
-    {flashboard(drawnOrder, size).map(row => (
-      <div data-bingo-flash-row="" key={row.letter ?? row.cells[0].value}>
-        <div aria-hidden="true" data-bingo-flash-letter="">
-          {row.letter}
-        </div>
-        {row.cells.map(cell => (
-          <div
-            aria-label={`${cell.value} ${cell.called ? '呼ばれた' : 'まだ'}`}
-            data-bingo-flash-cell=""
-            data-called={cell.called}
-            data-live={cell.live}
-            key={cell.value}
-            role="img"
-          >
-            {cell.value}
-          </div>
-        ))}
-      </div>
-    ))}
-  </div>
-);
 
 /**
  * Side by side the undo sits to the left of the draw, the way a pair of controls reads; stacked it goes under it,
@@ -126,7 +104,8 @@ const HostCall = ({
   );
 };
 
-const PANELS = [
+/** The host reads three panels, and the roster segment carries its own count because the number is worth having without opening it. */
+const hostPanels = (players: number): readonly PanelTab[] => [
   {
     panel: 'board',
     label: '盤面',
@@ -134,31 +113,13 @@ const PANELS = [
   {
     panel: 'roster',
     label: '参加者',
+    count: players,
   },
   {
     panel: 'card',
     label: 'カード',
   },
-] as const satisfies readonly { panel: Panel; label: string }[];
-
-/** One control with three segments rather than three buttons: which panel is showing is said by the pressed state alone, and the track is what makes them one thing. */
-const Tabs = ({ current, onPanel, players }: { current: Panel; onPanel: (panel: Panel) => void; players: number }): JSX.Element => (
-  <div data-bingo-tabs="">
-    {PANELS.map(entry => (
-      <Button
-        key={entry.panel}
-        onClick={() => {
-          onPanel(entry.panel);
-        }}
-        pressed={current === entry.panel}
-        variant="primary"
-      >
-        {entry.label}
-        {entry.panel === 'roster' ? <span data-bingo-tab-count="">{players}</span> : null}
-      </Button>
-    ))}
-  </div>
-);
+];
 
 /** What the host's screen actually has to draw. Ending the game is about the game; a card and a removal are about a person. */
 type HostDialog = { readonly kind: 'close' } | { readonly kind: 'card' | 'kick'; readonly member: RosterMember };
@@ -335,6 +296,7 @@ export const Host = ({
   const { history, latest } = calledEntries(drawnOrder, size);
   const members = rosterMembers(view, me, profiles);
   const mine = cardsOf(view, me);
+  const seated = isSeated(view, me);
   const manual = view.config.daub === 'Manual' && view.phase === 'Running';
   // A card marked by hand answers the tap rather than the draw, so only an automatic mark waits for the reel.
   const rolling = latest === null || view.config.daub === 'Manual' ? null : latest.value;
@@ -438,6 +400,18 @@ export const Host = ({
           />
         ))
       )}
+      {/* Calling the game and playing it are separate, so the room stays with whoever is running it either way. */}
+      <div data-bingo-actions="">
+        <Button
+          block
+          onClick={() => {
+            onSend(seatMessage(seated));
+          }}
+          variant="ghost"
+        >
+          {seatLabel(seated)}
+        </Button>
+      </div>
     </div>
   );
   // Discord has shrunk the activity to a corner of the call. The number, who is close, and the draw are what still fit; the header keeps the way out.
@@ -467,7 +441,7 @@ export const Host = ({
       <div data-bingo-switch="">
         <Tabs
           current={ui.panel}
-          players={members.length}
+          panels={hostPanels(members.length)}
           onPanel={(panel): void => {
             onUi({
               type: 'panel',

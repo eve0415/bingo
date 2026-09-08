@@ -1,6 +1,7 @@
 import type { Scene } from '../../app/preview/fixtures';
 import type { RoomView } from '@bingo/wrapper/protocol';
 
+import { playerKey } from '@bingo/wrapper/identity';
 import { describe, expect, it } from 'vitest';
 
 import { PROFILES, SCENES, SIZES, isScene } from '../../app/preview/fixtures';
@@ -27,7 +28,8 @@ describe('the preview room', () => {
   it('recognises the scenes it has and refuses the ones it does not', (): void => {
     expect(isScene('player-hidden')).toBe(true);
     expect(isScene('win')).toBe(true);
-    expect(isScene('spectator')).toBe(false);
+    expect(isScene('spectator')).toBe(true);
+    expect(isScene('watcher')).toBe(false);
     expect(isScene('constructor')).toBe(false);
     expect(isScene('toString')).toBe(false);
   });
@@ -46,6 +48,13 @@ describe('the preview room', () => {
   it('calls the game for the host and plays it as somebody else', (): void => {
     expect(SCENES.host(5).me).toEqual(SCENES.lobby(5).me);
     expect(SCENES.player(5).me).not.toEqual(SCENES.host(5).me);
+  });
+
+  it('watches the table from outside it', (): void => {
+    const { me, state } = SCENES.spectator(5);
+    expect(state.view?.players).not.toContainEqual(me);
+    expect(state.view?.cards.map(card => card.owner)).not.toContainEqual(me);
+    expect(PROFILES.has(playerKey(me))).toBe(false);
   });
 });
 

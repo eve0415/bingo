@@ -337,6 +337,73 @@ const replaceDeadlines = async (room: string, entries: [string, number][]): Prom
     await state.storage.setAlarm(Date.now() + 60_000);
   });
 };
+/** A room whose roster is already full at its host, so the next connection can only watch it. */
+const openWatchedRoom = async (label: string): Promise<{ room: string; host: TestClient; watcher: TestClient }> => {
+  const room = roomName(label);
+  const host = await openClient(room);
+  await nextSnapshot(host);
+  host.send({
+    type: 'settings',
+    settings: {
+      maxPlayers: 1,
+    },
+  });
+  await accepted(host);
+  const watcher = await openClient(room, 'watcher');
+  await nextSnapshot(watcher);
+  return {
+    room,
+    host,
+    watcher,
+  };
+};
+/** The same room with a seated player who is not the host, which is the view a watcher's is compared against. */
+const openWatchedGame = async (label: string): Promise<{ room: string; host: TestClient; alice: TestClient; watcher: TestClient }> => {
+  const room = roomName(label);
+  const host = await openClient(room);
+  await nextSnapshot(host);
+  const alice = await openClient(room, 'alice');
+  await accepted(alice);
+  await accepted(host);
+  host.send({
+    type: 'settings',
+    settings: {
+      maxPlayers: 2,
+    },
+  });
+  await accepted(host);
+  await accepted(alice);
+  const watcher = await openClient(room, 'watcher');
+  await nextSnapshot(watcher);
+  return {
+    room,
+    host,
+    alice,
+    watcher,
+  };
+};
+/** Draws until one of `cells` has been called, returning everything drawn by then and draining the frames every other client was sent. */
+const drawUntilCardHit = async (host: TestClient, others: TestClient[], cells: number[]): Promise<number[]> => {
+  for (let draw = 0; draw < 75; draw += 1) {
+    host.send({
+      type: 'command',
+      command: 'Draw',
+    });
+    const result = await accepted(host);
+    for (const other of others) {
+      await accepted(other);
+    }
+    const { drawn } = result.snapshot.view;
+    if (drawn.some(number => cells.includes(number))) return drawn;
+  }
+  throw new Error('no draw landed on the card');
+};
+/** The host the game itself is being played under, which the room's own host outlives. */
+const gameHostSubject = async (room: string): Promise<string> => {
+  const projected = engine.projectHost(await storedSnapshot(room));
+  if (!projected.ok) throw new Error('the stored snapshot does not project');
+  return projected.value.host.subject;
+};
 describe('front door identity', () => {
   it('serves health and requires websocket upgrades', async () => {
     const health = await workerExports.default.fetch('https://example.test/health');
@@ -1264,7 +1331,7 @@ describe('room games and projections', () => {
     expect(stateError.code).toBe('InvalidState');
     expect(stateError.detail).toContain('snapshot is not valid');
   });
-  it('enforces wrapper authorization, capacity, and locked-room joins', async () => {
+  it('enforces wrapper authorization, and lets a connection the game cannot seat watch it instead', async () => {
     const room = roomName('wrapper-guards');
     const host = await openClient(room);
     await nextSnapshot(host);
@@ -1299,13 +1366,10 @@ describe('room games and projections', () => {
     });
     await accepted(host);
     await accepted(alice);
-    const full = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
-      headers: {
-        [VERIFIED_IDENTITY_HEADER]: identityHeader('bob'),
-        Upgrade: 'websocket',
-      },
-    });
-    expect(full.status).toBe(409);
+    // The roster is full, so the third connection is seated by nobody and joins no roster; it is still given the room to look at.
+    const bob = await openClient(room, 'bob');
+    const watching = await nextSnapshot(bob);
+    expect(watching.view.players.map(player => player.subject)).toStrictEqual(['host', 'alice']);
     const lockedRoom = roomName('locked');
     const lockedHost = await openClient(lockedRoom);
     await nextSnapshot(lockedHost);
@@ -1314,13 +1378,18 @@ describe('room games and projections', () => {
       command: 'Start',
     });
     await accepted(lockedHost);
-    const locked = await workerExports.default.fetch(`https://example.test/rooms/${lockedRoom}/ws`, {
-      headers: {
-        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
-        Upgrade: 'websocket',
-      },
+    const latecomer = await openClient(lockedRoom, 'alice');
+    const locked = await nextSnapshot(latecomer);
+    expect(locked.view.phase).toBe('Running');
+    expect(locked.view.players.map(player => player.subject)).toStrictEqual(['host']);
+    // Watching a bingo game is watching the cards, so the projection is the one the host is given rather than an empty hand.
+    expect(locked.view.cards.map(card => card.owner.subject)).toStrictEqual(['host']);
+    latecomer.send({
+      type: 'command',
+      command: 'Join',
     });
-    expect(locked.status).toBe(409);
+    const refused = await errorMessage(latecomer);
+    expect(refused.code).toBe('RoomLocked');
   });
   it('restores a departed roster member even when new joins are locked', async () => {
     const room = roomName('returning');
@@ -1594,6 +1663,175 @@ describe('room games and projections', () => {
     }
     expect(wins).toBe(1);
   });
+  it('seats a mid-game departure again with the card and the marks it left with', async () => {
+    const room = roomName('mid-game-return');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    const seated = await accepted(alice);
+    await accepted(host);
+    const [dealt] = seated.snapshot.view.cards;
+    const { cells } = dealt;
+    host.send({
+      type: 'command',
+      command: 'Start',
+    });
+    await accepted(host);
+    await accepted(alice);
+    const beforeDeparture = await drawUntilCardHit(host, [alice], cells);
+    const departing = await nextSnapshotAfterResync(alice);
+    const [atDeparture] = departing.view.cards;
+    const { marked } = atDeparture;
+    alice.send({
+      type: 'command',
+      command: 'Leave',
+    });
+    await accepted(alice);
+    await accepted(host);
+    const remaining = cells.filter(cell => !beforeDeparture.includes(cell));
+    const awayDraws = await drawUntilCardHit(host, [alice], remaining);
+    const away = remaining.find(cell => awayDraws.includes(cell));
+    if (away === undefined) throw new Error('the draws taken during the absence missed the departed card');
+    alice.send({
+      type: 'command',
+      command: 'Join',
+    });
+    const restored = await accepted(alice);
+    await accepted(host);
+    expect(restored.snapshot.view.cards.map(card => card.owner.subject)).toStrictEqual(['alice']);
+    expect(restored.snapshot.view.cards[0].cells).toStrictEqual(cells);
+    // The seat comes back with the card it left on, and the numbers called in the meantime count for it as if it had never been away.
+    expect(restored.snapshot.view.cards[0].marked).toEqual(expect.arrayContaining(marked));
+    expect(restored.snapshot.view.cards[0].marked).toContain(cells.indexOf(away));
+  });
+  it('gives a watcher every card while a seated player keeps only their own', async () => {
+    const { room, host, alice, watcher } = await openWatchedGame('watched-projection');
+    const watching = await nextSnapshotAfterResync(watcher);
+    expect(watching.view.cards.map(card => card.owner.subject)).toStrictEqual(['host', 'alice']);
+    host.send({
+      type: 'command',
+      command: 'Start',
+    });
+    await accepted(host);
+    const seated = await accepted(alice);
+    const watched = await accepted(watcher);
+    expect(watched.snapshot.view.cards.map(card => card.owner.subject)).toStrictEqual(['host', 'alice']);
+    expect(seated.snapshot.view.cards.map(card => card.owner.subject)).toStrictEqual(['alice']);
+    // Watching is not membership: the roster is who the room has seated, and it is what the next game deals itself to.
+    expect(await rosterCount(room)).toBe(2);
+    const watcherState = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
+      headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('watcher'),
+      },
+    });
+    expect(watcherState.status).toBe(403);
+    expect(await watcherState.json()).toEqual({
+      error: 'NotMember',
+    });
+    const seatedState = await workerExports.default.fetch(`https://example.test/rooms/${room}/state`, {
+      headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
+      },
+    });
+    expect(seatedState.status).toBe(200);
+    const message: ServerMessage = await seatedState.json();
+    expect(message.type === 'snapshot' && message.view.cards.map(card => card.owner.subject)).toStrictEqual(['alice']);
+  });
+  it('redacts a watcher under restricted visibility the way it redacts the host', async () => {
+    for (const [drawnVisibility, visible] of [
+      ['LatestOnly', 1],
+      ['Hidden', 0],
+    ] as const) {
+      const { host, alice, watcher } = await openWatchedGame('watched-redaction');
+      host.send({
+        type: 'settings',
+        settings: {
+          drawnVisibility,
+        },
+      });
+      await accepted(host);
+      await accepted(alice);
+      await accepted(watcher);
+      host.send({
+        type: 'command',
+        command: 'Start',
+      });
+      await accepted(host);
+      await accepted(alice);
+      await accepted(watcher);
+      host.send({
+        type: 'command',
+        command: 'Draw',
+      });
+      await accepted(host);
+      const seated = await accepted(alice);
+      const watched = await accepted(watcher);
+      expect(watched.snapshot.view.cards.map(card => card.owner.subject)).toStrictEqual(['host', 'alice']);
+      for (const card of watched.snapshot.view.cards) {
+        expect(card).toMatchObject({
+          marked: [],
+          bingo: [],
+          reach: [],
+        });
+      }
+      expect(watched.snapshot.view.drawn).toHaveLength(visible);
+      expect(watched.snapshot.drawnOrder).toHaveLength(visible);
+      expect(watched.events.events.some(event => 'NumberDrawn' in event)).toBe(false);
+      // A watcher owns no card, so the only marks restricted visibility leaves anybody are the ones a seated player keeps on their own.
+      expect(seated.snapshot.view.cards[0].marked.length).toBeGreaterThan(0);
+    }
+  });
+  it('turns away a kicked player and the Join of a socket that outlived the kick', async () => {
+    const room = roomName('kicked-return');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    await accepted(alice);
+    await accepted(host);
+    /* The kick revokes every socket the target holds, so the wrapper's own refusal is reachable only for a socket that outlived one.
+       It is written by hand here because nothing else can produce that order, and the guard is what keeps the engine from being asked at all. */
+    await runInDurableObject(workerEnv.ROOM.getByName(room), (_instance, state) => {
+      state.storage.sql.exec('INSERT INTO kicks (issuer, subject) VALUES (?, ?)', 'hmac', 'alice');
+    });
+    alice.send({
+      type: 'command',
+      command: 'Join',
+    });
+    const refusedJoin = await errorMessage(alice);
+    expect(refusedJoin.code).toBe('JoinRejected');
+    const closure = new Promise<CloseEvent>(resolve => {
+      alice.socket.addEventListener('close', event => resolve(event), {
+        once: true,
+      });
+    });
+    host.send({
+      type: 'command',
+      command: {
+        Kick: {
+          target: {
+            issuer: 'hmac',
+            subject: 'alice',
+          },
+        },
+      },
+    });
+    await accepted(host);
+    const closed = await closure;
+    expect(closed.code).toBe(1008);
+    expect(closed.reason).toBe('Kicked');
+    const rejected = await workerExports.default.fetch(`https://example.test/rooms/${room}/ws`, {
+      headers: {
+        [VERIFIED_IDENTITY_HEADER]: identityHeader('alice'),
+        Upgrade: 'websocket',
+      },
+    });
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toEqual({
+      error: 'JoinRejected',
+    });
+    // The refusal hands back nothing to talk on, so the reason for it travels as the status rather than as a close frame.
+    expect(rejected.webSocket).toBeNull();
+  });
   it('updates cached status after an automatic win', async () => {
     const room = roomName('automatic-finish');
     const host = await openClient(room);
@@ -1626,10 +1864,16 @@ describe('room games and projections', () => {
   });
 });
 describe('host departure and alarms', () => {
-  it('transfers immediately when the host leaves or kicks itself', async () => {
-    for (const command of [
-      'Leave',
-      {
+  it('transfers immediately when the host kicks itself out of the room', async () => {
+    const room = roomName('depart');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    await accepted(alice);
+    await accepted(host);
+    host.send({
+      type: 'command',
+      command: {
         Kick: {
           target: {
             issuer: 'hmac',
@@ -1637,22 +1881,37 @@ describe('host departure and alarms', () => {
           },
         },
       },
-    ]) {
-      const room = roomName('depart');
-      const host = await openClient(room);
-      await nextSnapshot(host);
-      const alice = await openClient(room, 'alice');
-      await accepted(alice);
-      await accepted(host);
-      host.send({
-        type: 'command',
-        command,
-      });
-      const result = command === 'Leave' ? await accepted(host) : await accepted(alice);
-      if (command === 'Leave') await accepted(alice);
-      expect(result.snapshot.room.host.subject).toBe('alice');
-      expect(result.events.events.some(event => 'HostTransferred' in event)).toBe(true);
-    }
+    });
+    const result = await accepted(alice);
+    expect(result.snapshot.room.host.subject).toBe('alice');
+    expect(result.events.events.some(event => 'HostTransferred' in event)).toBe(true);
+  });
+  it('keeps the room with a host who gives up a seat, and seats them again on return', async () => {
+    const room = roomName('sitting-out-host');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    await accepted(alice);
+    await accepted(host);
+    host.send({
+      type: 'command',
+      command: 'Leave',
+    });
+    const out = await accepted(host);
+    await accepted(alice);
+    // Calling a game and playing it are separate facts, so the seat goes and the room does not.
+    expect(out.snapshot.room.host.subject).toBe('host');
+    expect(out.snapshot.view.players.map(player => player.subject)).toStrictEqual(['alice']);
+    expect(out.events.events.some(event => 'HostTransferred' in event)).toBe(false);
+    expect(await deadlineAt(room, 'host_absent')).toBeNull();
+    host.send({
+      type: 'command',
+      command: 'Join',
+    });
+    const back = await accepted(host);
+    await accepted(alice);
+    expect(back.snapshot.view.players.map(player => player.subject)).toStrictEqual(['alice', 'host']);
+    expect(back.snapshot.room.host.subject).toBe('host');
   });
   it('transfers an absent host when its deadline expires', async () => {
     const room = roomName('host-alarm');
@@ -1743,10 +2002,24 @@ describe('host departure and alarms', () => {
     expect(await deadlineAt(room, 'host_absent')).not.toBeNull();
     await host.close();
   });
-  it('closes instead of transferring when an auto-closing host departs', async () => {
-    for (const command of [
-      'Leave',
-      {
+  it('closes instead of transferring when an auto-closing host is removed from the room', async () => {
+    const room = roomName('auto-close-command');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const alice = await openClient(room, 'alice');
+    await accepted(alice);
+    await accepted(host);
+    host.send({
+      type: 'settings',
+      settings: {
+        hostAutoClose: true,
+      },
+    });
+    await accepted(host);
+    await accepted(alice);
+    host.send({
+      type: 'command',
+      command: {
         Kick: {
           target: {
             issuer: 'hmac',
@@ -1754,33 +2027,13 @@ describe('host departure and alarms', () => {
           },
         },
       },
-    ]) {
-      const room = roomName('auto-close-command');
-      const host = await openClient(room);
-      await nextSnapshot(host);
-      const alice = await openClient(room, 'alice');
-      await accepted(alice);
-      await accepted(host);
-      host.send({
-        type: 'settings',
-        settings: {
-          hostAutoClose: true,
-        },
-      });
-      await accepted(host);
-      await accepted(alice);
-      host.send({
-        type: 'command',
-        command,
-      });
-      const result = command === 'Leave' ? await accepted(host) : await accepted(alice);
-      if (command === 'Leave') await accepted(alice);
-      expect(result.snapshot.view.phase).toBe('Finished');
-      expect(result.snapshot.view.revealedSeed).toBe(await storedSeed(room));
-      expect(result.snapshot.room.host.subject).toBe('host');
-      expect(result.events.events.some(event => 'GameClosed' in event)).toBe(true);
-      expect(result.events.events.some(event => 'HostTransferred' in event)).toBe(false);
-    }
+    });
+    const result = await accepted(alice);
+    expect(result.snapshot.view.phase).toBe('Finished');
+    expect(result.snapshot.view.revealedSeed).toBe(await storedSeed(room));
+    expect(result.snapshot.room.host.subject).toBe('host');
+    expect(result.events.events.some(event => 'GameClosed' in event)).toBe(true);
+    expect(result.events.events.some(event => 'HostTransferred' in event)).toBe(false);
   });
   it('closes when an auto-closing host absence expires', async () => {
     const room = roomName('auto-close-absence');
@@ -1807,6 +2060,106 @@ describe('host departure and alarms', () => {
     const result = await accepted(alice);
     expect(result.snapshot.view.phase).toBe('Finished');
     expect(result.snapshot.room.host.subject).toBe('host');
+  });
+  it('ends the game when a lone host kicks itself out of the room', async () => {
+    const room = roomName('lone-self-kick');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    const closure = new Promise<void>(resolve => {
+      host.socket.addEventListener('close', () => resolve(), {
+        once: true,
+      });
+    });
+    host.send({
+      type: 'command',
+      command: {
+        Kick: {
+          target: {
+            issuer: 'hmac',
+            subject: 'host',
+          },
+        },
+      },
+    });
+    await closure;
+    expect(await deadlineAt(room, 'room_empty')).toBeGreaterThan(Date.now());
+    const watching = await openClient(room, 'alice');
+    const snapshot = await nextSnapshot(watching);
+    expect(snapshot.view.phase).toBe('Finished');
+    expect(snapshot.view.revealedSeed).toBe(await storedSeed(room));
+    // Nobody was left to hand the room to, so it is still named for the host that ended it.
+    expect(snapshot.room.host.subject).toBe('host');
+  });
+  it('hands the room to a watcher when the host kicks itself out of the game', async () => {
+    const { room, host, watcher } = await openWatchedRoom('self-kick-watcher');
+    const closure = new Promise<void>(resolve => {
+      host.socket.addEventListener('close', () => resolve(), {
+        once: true,
+      });
+    });
+    host.send({
+      type: 'command',
+      command: {
+        Kick: {
+          target: {
+            issuer: 'hmac',
+            subject: 'host',
+          },
+        },
+      },
+    });
+    await closure;
+    const taken = await accepted(watcher);
+    expect(taken.snapshot.room.host.subject).toBe('watcher');
+    expect(taken.snapshot.view.host.subject).toBe('watcher');
+    expect(taken.snapshot.view.phase).toBe('Lobby');
+    expect(taken.events.events.some(event => 'PlayerKicked' in event)).toBe(true);
+    // Only a player in the game can be its host, so the room changes hands and the game it is running does not.
+    expect(taken.events.events.some(event => 'HostTransferred' in event)).toBe(false);
+    expect(await gameHostSubject(room)).toBe('host');
+  });
+  it('lets a host-absence horizon lapse while the host is here, and hands the room to a watcher once it is not', async () => {
+    const { room, host, watcher } = await openWatchedRoom('absence-with-watcher');
+    await replaceDeadlines(room, [['host_absent', 1]]);
+    expect(await runDurableObjectAlarm(workerEnv.ROOM.getByName(room))).toBe(true);
+    expect(host.frames).toEqual([]);
+    expect(watcher.frames).toEqual([]);
+    const unchanged = await nextSnapshotAfterResync(host);
+    expect(unchanged.room.host.subject).toBe('host');
+    expect(unchanged.view.phase).toBe('Lobby');
+    await host.close();
+    await scheduler.wait(10);
+    await replaceDeadlines(room, [['host_absent', 1]]);
+    expect(await runDurableObjectAlarm(workerEnv.ROOM.getByName(room))).toBe(true);
+    const taken = await accepted(watcher);
+    expect(taken.snapshot.room.host.subject).toBe('watcher');
+    expect(taken.events.events).toEqual([]);
+    expect(await gameHostSubject(room)).toBe('host');
+  });
+  it('clears the horizons an old game armed once a new game has reseated the roster', async () => {
+    const room = roomName('new-game-horizons');
+    const host = await openClient(room);
+    await nextSnapshot(host);
+    host.send({
+      type: 'command',
+      command: 'Leave',
+    });
+    await accepted(host);
+    expect(await deadlineAt(room, 'room_empty')).toBeGreaterThan(Date.now());
+    // A host on a socket clears its own absence row on every presence pass, so a row for it to find has to be put back by hand.
+    await replaceDeadlines(room, [
+      ['room_empty', Date.now() + DEADLINE_HORIZONS.roomEmpty],
+      ['host_absent', Date.now() + DEADLINE_HORIZONS.hostAbsent],
+    ]);
+    host.send({
+      type: 'newGame',
+      config: null,
+    });
+    const replacement = await replacementAccepted(host);
+    expect(replacement.snapshot.room.gameIndex).toBe(1);
+    expect(replacement.snapshot.view.players.map(player => player.subject)).toStrictEqual(['host']);
+    expect(await deadlineAt(room, 'room_empty')).toBeNull();
+    expect(await deadlineAt(room, 'host_absent')).toBeNull();
   });
   it('closes an empty room and reveals its seed', async () => {
     const room = roomName('empty-alarm');
@@ -1860,7 +2213,7 @@ describe('host departure and alarms', () => {
   });
 });
 describe('additional room edges', () => {
-  it('closes the game and arms the empty-room deadline when a lone host departs', async () => {
+  it('arms the empty-room deadline when the last seat is given up, and clears it on return', async () => {
     const room = roomName('lone-departure');
     const host = await openClient(room);
     await nextSnapshot(host);
@@ -1870,19 +2223,15 @@ describe('additional room edges', () => {
     });
     const result = await accepted(host);
     expect(result.snapshot.room.host.subject).toBe('host');
-    // Nobody is left to call numbers, so the game ends with the host rather than staying open behind the empty-room deadline.
-    expect(result.snapshot.view.phase).toBe('Finished');
-    expect(result.snapshot.view.revealedSeed).toBe(await storedSeed(room));
-    const armed = await runInDurableObject(
-      workerEnv.ROOM.getByName(room),
-      (_instance, state) =>
-        state.storage.sql
-          .exec<{
-            count: number;
-          }>('SELECT COUNT(*) AS count FROM deadlines WHERE kind = ?', 'room_empty')
-          .one().count,
-    );
-    expect(armed).toBe(1);
+    // Nobody is playing, so the game is on the empty-room horizon — but its caller is still here, so it is still open.
+    expect(result.snapshot.view.phase).toBe('Lobby');
+    expect(await deadlineAt(room, 'room_empty')).toBeGreaterThan(Date.now());
+    host.send({
+      type: 'command',
+      command: 'Join',
+    });
+    await accepted(host);
+    expect(await deadlineAt(room, 'room_empty')).toBeNull();
   });
   it('discards a room once every connection has gone', async () => {
     const room = roomName('vacant-discard');
@@ -2039,7 +2388,7 @@ describe('additional room edges', () => {
     const awaitedResult21 = await nextSnapshotAfterResync(alice);
     expect(awaitedResult21.room.host.subject).toBe('nobody');
   });
-  it('keeps the socket alive if a departing-host transfer is rejected', async () => {
+  it('keeps the game open when the removed room host is not the host the game was dealt under', async () => {
     for (const hostAutoClose of [false, true]) {
       const room = roomName('rejected-departure-transfer');
       const host = await openClient(room);
@@ -2069,14 +2418,24 @@ describe('additional room edges', () => {
           );
         }
       });
-      alice.send({
+      host.send({
         type: 'command',
-        command: 'Leave',
+        command: {
+          Kick: {
+            target: {
+              issuer: 'hmac',
+              subject: 'alice',
+            },
+          },
+        },
       });
-      const result = await accepted(alice);
-      await accepted(host);
+      const result = await accepted(host);
+      /* Neither the hand-over nor the close the room asks for is the departing room host's to make, because the game answers to the host it was dealt under.
+         The engine refuses both, and the room is left as it stood rather than holding a game nobody in it can account for. */
       expect(result.snapshot.room.host.subject).toBe('alice');
-      expect(alice.socket.readyState).toBe(WebSocket.OPEN);
+      expect(result.snapshot.view.phase).toBe('Lobby');
+      expect(result.events.events.some(event => 'HostTransferred' in event || 'GameClosed' in event)).toBe(false);
+      expect(await gameHostSubject(room)).toBe('host');
     }
   });
   it('tolerates an abandonment close rejected by the engine', async () => {

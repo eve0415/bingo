@@ -11,10 +11,10 @@ import type { JSX } from 'react';
 import { Button } from './button';
 import { CalledNumber } from './call';
 import { BingoCard } from './card';
-import { cellMessage, claimMessage } from './commands';
+import { cellMessage, claimMessage, seatMessage } from './commands';
 import { screenEdge } from './layout';
 import { cardCells, isReach, strikeLines } from './lines';
-import { calledEntries, cardsOf, pendingFor, progressLabel, rosterMembers } from './model';
+import { calledEntries, cardsOf, isSeated, pendingFor, progressLabel, rosterMembers, seatLabel } from './model';
 import { RosterRow } from './roster';
 import { Note, Notice, ReachNote, Screen, Sheet, Wordmark } from './screen';
 
@@ -94,6 +94,26 @@ export const Player = ({
       ))}
     </div>
   );
+  /* Stopping playing belongs beside the roster rather than next to the card: it is a decision about being in the game,
+     and the one surface a thumb resting on the board cannot reach by accident. */
+  const seat = (
+    <>
+      <p data-bingo-fine="">カードとマークは残ります。戻ればそのまま続けられます。</p>
+      <div data-bingo-actions="">
+        <Button
+          block
+          disabled={offline}
+          onClick={() => {
+            onSend(seatMessage(isSeated(view, me)));
+          }}
+          size="lg"
+          variant="ghost"
+        >
+          {seatLabel(isSeated(view, me))}
+        </Button>
+      </div>
+    </>
+  );
   return (
     <Screen
       edge={screenEdge(layout.dense)}
@@ -133,6 +153,7 @@ export const Player = ({
             title={`参加者 · ${members.length}人`}
           >
             {rosterList}
+            {seat}
           </Sheet>
         ) : null
       }
@@ -184,6 +205,7 @@ export const Player = ({
           <div data-bingo-rail="">
             <h2 data-bingo-label="">参加者 · {members.length}人</h2>
             {rosterList}
+            {seat}
           </div>
         ) : null}
       </div>

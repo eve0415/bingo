@@ -39,16 +39,26 @@ Errors are always `{"error": "<Code>"}`.
 | `InvalidRoomId`    | 400    | The room id fails the pattern.                                            |
 | `MissingIdentity`  | 401    | No identity header.                                                       |
 | `InvalidIdentity`  | 401    | An identity header that is not the shape below.                           |
-| `JoinRejected`     | 409    | The connecting player may not join. See below.                            |
+| `JoinRejected`     | 409    | The connecting player was kicked out of this room. See below.             |
 | `RoomNotFound`     | 404    | `/state` or `/log` on a room no socket has ever opened.                   |
 | `NotMember`        | 403    | The caller is not on the roster.                                          |
 | `GameNotFound`     | 404    | No game at that index.                                                    |
 | `GameNotFinished`  | 409    | The log is readable only once the game is finished and the seed revealed. |
 | `GameNotStarted`   | 409    | The game has no commitment because it never started.                      |
 
-Note that a rejected join is an HTTP 409 on the upgrade, not a close frame on an opened socket.
+A rejected join is an HTTP 409 on the upgrade rather than a close frame on an opened socket, and being kicked is the only thing it means. A response carrying a status carries no socket to explain itself on, so a browser sees only a failed handshake: a front end that wants to tell a kicked player why has the 409 and has to say it itself. Being kicked _while connected_ is the case that does arrive as a close, code 1008 and the reason `Kicked`.
 
-`JoinRejected` is the one worth handling carefully, because it covers four different situations and the most common is the least obvious. The player was kicked, or the roster is at `maxPlayers`, or the game has finished and nobody has started another — or the game is running and late joining is closed, which is the default. A newcomer connecting to a default room after the host has started is refused, having done nothing wrong.
+The other `JoinRejected` a client has to handle is not a refused connection at all. A `Join` command from a socket the room has already accepted is answered with an error frame of that code when the roster is at `maxPlayers`, which is what a watcher waiting for a seat will see.
+
+## Watching
+
+Everybody else is let in, seated or not. A connection the game cannot deal a card to — the roster is at `maxPlayers`, the game is running and late joining is closed, the game has finished and nobody has started another — opens anyway and is given the room to watch.
+
+A watcher is sent **the host's projection**: every participant's card rather than an empty hand, because in bingo the cards are what there is to watch. `drawnVisibility` applies to them exactly as it applies to the host, so a room that does not want its progress public restricts it for both at once. Short of that, a watcher sees more than a seated player does — every card face and every daub — which is worth knowing before opening a room to people you would not hand the host's screen to.
+
+Nothing in the protocol names a watcher. They are simply absent from `view.players`, and a client decides what to draw by looking for itself there.
+
+A watcher is deliberately left off the roster, which has three consequences. They take up none of the `maxPlayers` places. `/state` and `/log` answer them `NotMember`, those being routes for the room's members. And the next game is dealt to the roster, so nothing seats a watcher automatically: they take a seat by sending `Join` once a game will accept one.
 
 ## Identity
 
@@ -76,7 +86,7 @@ Three things follow for whoever writes that front end.
 
 Opening a socket joins the room. There is no join message to send.
 
-- If the connection produced no events — a returning player, or the host creating the room — that socket receives one `snapshot`.
+- If the connection produced no events — a returning player, the host creating the room, or a watcher the game could not seat — that socket receives one `snapshot`.
 - If it produced a `Join`, every connected socket receives a `snapshot` followed by an `events` frame, the new one included.
 
 Every later state change follows the same pair: the authoritative snapshot first, then the events that explain it. A client never has to fold events into state. Treat `events` as a notification feed for animation and sound, and `snapshot` as the truth.
@@ -130,7 +140,9 @@ Host-only commands are rejected with `NotHost` before any other check, so a non-
 
 One trap: a caller who is not in the game gets `UnknownCard` from `Mark`, `Unmark` and `Claim`, not `NotAParticipant`.
 
-The host is whoever opened the first socket to a room that did not exist. If the host is gone for 30 seconds the room either closes the game or hands the role to the first present player, depending on `hostAutoClose`, and a client will see a `HostTransferred` or `GameClosed` event it did not ask for. A kicked player's sockets are closed with code 1008 and the reason `Kicked`.
+A second one: `RoomLocked` is about somebody who has never been seated in this game. A player who issued `Leave` is not late joining when they come back — the engine still holds their cards, their marks and the draw they joined at, and hands all three back as they were — so a return is accepted mid-game whatever `lateJoin` says. The one thing it does not restore is a rank: a line that completed while they were away is recognised when they return, behind anyone recognised in the meantime.
+
+The host is whoever opened the first socket to a room that did not exist. The role is about being in the room rather than playing in it: a host who gives up a seat goes on calling numbers, and the room moves on only when the host is kicked out of it or when no socket has belonged to them for 30 seconds. Either of those closes the game or hands the role on, depending on `hostAutoClose`, and a client will see a `HostTransferred` or `GameClosed` event it did not ask for. Where the successor is a watcher the role moves without a `HostTransferred`, because a game keeps the host it was played under and only a player in that game can be it. A kicked player's sockets are closed with code 1008 and the reason `Kicked`.
 
 ### Rate limit
 
@@ -138,7 +150,7 @@ The host is whoever opened the first socket to a room that did not exist. If the
 
 ### Reconnecting
 
-Send `resync` and you get a snapshot on that socket alone. There is no event replay and no cursor to resume from, because there is nothing to resume: reconnect, take the snapshot as truth, and carry on. Reconnecting runs the join path again, which is harmless for a player already on the roster.
+Send `resync` and you get a snapshot on that socket alone. There is no event replay and no cursor to resume from, because there is nothing to resume: reconnect, take the snapshot as truth, and carry on. Reconnecting runs the join path again, which is harmless for a player already on the roster and leaves whoever the game will not seat watching it.
 
 ### Draw order
 
@@ -154,13 +166,13 @@ Whatever a client offers as the first `Sec-WebSocket-Protocol` value is echoed b
 
 A room exists from the first socket. `/state` and `/log` return `RoomNotFound` before that — there is no way to create a room over HTTP.
 
-| Horizon         | After | Effect                                                         |
-| --------------- | ----- | -------------------------------------------------------------- |
-| Host absent     | 30 s  | Transfer the host, or close the game if `hostAutoClose`.       |
-| Room empty      | 5 min | Close the current game. Nothing is deleted.                    |
-| Room vacant     | 5 min | **Delete the room and everything in it.**                      |
-| Reveal backstop | 24 h  | Close the game so its seed is revealed and it can be verified. |
-| Garbage collect | 7 d   | Delete a room nobody has touched.                              |
+| Horizon         | After | Effect                                                                                      |
+| --------------- | ----- | ------------------------------------------------------------------------------------------- |
+| Host absent     | 30 s  | No socket belongs to the host. Transfer the role, or close the game if `hostAutoClose`.     |
+| Room empty      | 5 min | Nobody holds a seat, however many are watching. Close the current game; nothing is deleted. |
+| Room vacant     | 5 min | No socket at all. **Delete the room and everything in it.**                                 |
+| Reveal backstop | 24 h  | Close the game so its seed is revealed and it can be verified.                              |
+| Garbage collect | 7 d   | Delete a room nobody has touched.                                                           |
 
 None of these are configurable over the wire.
 
@@ -204,7 +216,7 @@ The room server branches on no issuer, parses no id format, and calls no third p
 pnpm dev            # or run a client's dev server, which serves this one alongside it
 pnpm test
 pnpm test:coverage
-pnpm deploy
+pnpm run deploy     # `run` because pnpm's own deploy command shadows the script
 ```
 
 Tests run inside `workerd` through `@cloudflare/vitest-pool-workers`, against this package's own `wrangler.json`, so the Durable Object and its SQLite storage behave as they do in production. Coverage requires 100% of statements, branches, functions and lines across `src`.

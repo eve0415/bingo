@@ -3,7 +3,7 @@ import type { UiAction } from '../../app/room/uiState';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { cellMessage, claimMessage } from '../../app/room/commands';
+import { cellMessage, claimMessage, seatMessage } from '../../app/room/commands';
 import { Player } from '../../app/room/player';
 
 import { HOST, IDLE, ME, OTHER, PROFILES, card, clickEveryAction, sink, view } from './fixture';
@@ -211,7 +211,7 @@ describe('the player screen while the card is in play', () => {
 });
 
 describe('the player screen with no card of its own', () => {
-  it('hides the numbers and points a spectator at the next game rather than at a seat', (): void => {
+  it('hides the numbers and offers the seat to whoever is holding no card', (): void => {
     const out = sink();
     const screen = (
       <Player
@@ -245,13 +245,14 @@ describe('the player screen with no card of its own', () => {
     expect(html).toContain('data-bingo-scrim=""');
     expect(html).toContain('観戦中');
     expect(html).toContain('このゲームにはカードがありません。次のゲームから参加できます。');
-    expect(html).not.toContain('>参加する</button>');
+    expect(html).toContain('>参加する</button>');
     expect(html).not.toContain('data-bingo-call=""');
     expect(html).not.toContain('参加者 <!-- -->2');
     expect(html).not.toContain('>ビンゴを宣言</button>');
 
     clickEveryAction(screen);
-    expect(out.sent).toEqual([]);
+    // The desk keeps the roster in its rail, and this frame is also holding a sheet opened before it grew, so the one control is on screen twice.
+    expect(out.sent).toEqual([seatMessage(false), seatMessage(false)]);
     expect(out.ui).toEqual([DISMISS, DISMISS]);
   });
 

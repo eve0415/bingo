@@ -19,6 +19,7 @@ import {
   progressLabel,
   rosterMembers,
   sameWinLimit,
+  seatLabel,
   visibilityOf,
   winLimitLabel,
   winnerCards,
@@ -178,6 +179,10 @@ describe('the roster', () => {
     expect(isSeated(view(), ME)).toBe(true);
     expect(isSeated(view(), OTHER)).toBe(false);
   });
+
+  it('names the seat control after what it would do', (): void => {
+    expect([seatLabel(true), seatLabel(false)]).toEqual(['参加しない', '参加する']);
+  });
 });
 
 describe('the flashboard', () => {
@@ -300,14 +305,12 @@ describe('the room notice', () => {
     ).toBe('接続しています');
   });
 
-  it('tells a kick, a refused join and an expiry apart, though the close code cannot', (): void => {
+  it('tells a kick and an expiry apart, though the close code cannot', (): void => {
     const kicked = noticeOf(closed('Kicked'));
-    const rejected = noticeOf(closed('Join rejected'));
     const expired = noticeOf(closed('Room expired'));
     expect(kicked).toBe('この部屋から外れました。ホストに聞いてみてください');
-    expect(rejected).toBe('この部屋には入れませんでした。ホストに聞いてみてください');
     expect(expired).toBe('この部屋は時間切れで閉じました');
-    expect(new Set([kicked, rejected, expired]).size).toBe(3);
+    expect(kicked).not.toBe(expired);
   });
 
   it('asks for a reopen on a close it has no words for, and on one that reported nothing', (): void => {
@@ -328,7 +331,7 @@ describe('the room notice', () => {
   it('says every refusal the engine can raise in words the room chose', (): void => {
     expect(noticeOf(refused('NotHost'))).toBe('この操作はホストだけができます');
     expect(noticeOf(refused('NotAParticipant'))).toBe('このゲームには参加していません');
-    expect(noticeOf(refused('RoomLocked'))).toBe('このゲームは締め切られています。次のゲームから参加できます');
+    expect(noticeOf(refused('RoomLocked'))).toBe('いまは参加できません。次のゲームからどうぞ');
     expect(noticeOf(refused('NumberNotDrawn'))).toBe('その番号はまだ呼ばれていません');
     expect(noticeOf(refused('NumberNotOnCard'))).toBe('その番号はカードにありません');
     expect(noticeOf(refused('NothingToUndo'))).toBe('取り消せる番号がありません');

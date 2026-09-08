@@ -4,7 +4,7 @@ import { playerKey } from '@bingo/wrapper/identity';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { cellMessage, commandMessage, kickMessage } from '../../app/room/commands';
+import { cellMessage, commandMessage, kickMessage, seatMessage } from '../../app/room/commands';
 import { Host } from '../../app/room/host';
 import { hostLayout } from '../../app/room/layout';
 
@@ -85,11 +85,13 @@ describe('the host screen', () => {
 
     clickEveryAction(screen);
     expect(out.ui).toEqual([{ type: 'open', overlay: { kind: 'close' } }, openCard(KEYS.me)]);
-    expect(out.sent).toHaveLength(26);
+    expect(out.sent).toHaveLength(27);
     expect(out.sent.slice(0, 2)).toEqual([commandMessage('Undo'), commandMessage('Draw')]);
     expect(out.sent[2]).toEqual(cellMessage(0, 0, 5, false));
     expect(out.sent).not.toContainEqual(cellMessage(0, 12, 5, true));
-    expect(out.sent.at(-1)).toEqual(cellMessage(0, 24, 5, false));
+    expect(out.sent.at(-2)).toEqual(cellMessage(0, 24, 5, false));
+    // The seat control sits under the card it would give up, so it is the last thing in the column.
+    expect(out.sent.at(-1)).toEqual(seatMessage(true));
   });
 
   it('drops the draw into the footer of a phone and confirms closing the game', (): void => {
@@ -348,7 +350,7 @@ describe('the host screen', () => {
 
     clickEveryAction(screen);
     expect(out.ui).toEqual([{ type: 'open', overlay: { kind: 'close' } }, openCard(KEYS.me), DISMISS, DISMISS, DISMISS]);
-    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw'), kickMessage(ME)]);
+    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw'), seatMessage(true), kickMessage(ME)]);
   });
 
   it('shows nothing for a card belonging to someone the roster no longer holds', (): void => {
@@ -389,7 +391,7 @@ describe('the host screen', () => {
 
     clickEveryAction(screen);
     expect(out.ui).toEqual([{ type: 'open', overlay: { kind: 'close' } }]);
-    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw')]);
+    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw'), seatMessage(true)]);
   });
 
   it('moves the call beside the switcher, with the draw controls, on a frame too short to stack them', (): void => {
@@ -561,7 +563,7 @@ describe('the host screen', () => {
 
     clickEveryAction(screen);
     expect(out.ui).toEqual([{ type: 'open', overlay: { kind: 'close' } }]);
-    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw')]);
+    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw'), seatMessage(true)]);
   });
 
   it('opens the card of one player and offers the removal from there', (): void => {
@@ -624,6 +626,6 @@ describe('the host screen', () => {
       },
       DISMISS,
     ]);
-    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw')]);
+    expect(out.sent).toEqual([commandMessage('Undo'), commandMessage('Draw'), seatMessage(true)]);
   });
 });
